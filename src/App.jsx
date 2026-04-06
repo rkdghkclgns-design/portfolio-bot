@@ -45,21 +45,21 @@ function skillMatches(userSkillName, reqSkill) {
 //   다수 매칭 보너스     +15   (2개+5, 3개+10, 4개이상+15)
 //   패널티: reqSkills없음 -15, 완전불일치 -10, 경력초과 -5
 // ────────────────────────────────────────────────────────────────────────────
-function calculateMatchScore(user, job) {
-  let score = 0;
+function calculateMatchScore(user, job, detailed = false) {
+  const d = { roleScore: 0, expScore: 0, skillScore: 0, fitScore: 0, multiScore: 0, penalty: 0, matchedSkills: [], unmatchedSkills: [] };
 
   // ── 직군 매칭 (+15) ──────────────────────────────────────
   const jobRoles = job.roles && job.roles.length > 0 ? job.roles : [job.role];
-  if (jobRoles.includes(user.role)) score += 15;
+  if (jobRoles.includes(user.role)) d.roleScore = 15;
 
   // ── 경력 매칭 (+15 / +10 / +5) ───────────────────────────
   const userExp = Number(user.experience) || 0;
   const jobExp = job.reqExp || 0;
   const expDiff = Math.abs(userExp - jobExp);
-  if (expDiff === 0) score += 15;
-  else if (expDiff === 1) score += 10;
-  else if (expDiff === 2) score += 5;
-  if (jobExp === 0 && userExp >= 5) score -= 5;
+  if (expDiff === 0) d.expScore = 15;
+  else if (expDiff === 1) d.expScore = 10;
+  else if (expDiff === 2) d.expScore = 5;
+  if (jobExp === 0 && userExp >= 5) d.penalty -= 5;
 
   // ── 스킬 영역 ─────────────────────────────────────────────
   if (job.reqSkills && job.reqSkills.length > 0) {
@@ -73,35 +73,26 @@ function calculateMatchScore(user, job) {
         matchedCount++;
         const lw = matched.level === '상' ? 1.5 : matched.level === '중' ? 1.0 : 0.4;
         weightedSum += lw;
+        d.matchedSkills.push({ name: req, level: matched.level });
+      } else {
+        d.unmatchedSkills.push(req);
       }
     });
 
-    // ── 스킬 가중 매칭 (max +30) ─────────────────────────────
-    // 매칭된 각 스킬의 가중치 합 / 요구 스킬 수 × 30
-    const skillScore = reqLen > 0 ? (weightedSum / reqLen) * 30 : 0;
-    score += Math.round(Math.min(30, skillScore));
-
-    // ── 스킬 정합도 보너스 (max +25) ─────────────────────────
-    // 핵심: 매칭 비율 × 평균 숙련도 가중치 → 스킬이 많이/높게 매칭될수록 높음
+    d.skillScore = Math.round(Math.min(30, reqLen > 0 ? (weightedSum / reqLen) * 30 : 0));
     if (matchedCount > 0) {
-      const avgWeight = weightedSum / matchedCount; // 평균 숙련도 (0.4~1.5)
-      const coverageRatio = matchedCount / reqLen;
-      score += Math.round(coverageRatio * avgWeight * 25);
+      d.fitScore = Math.round((matchedCount / reqLen) * (weightedSum / matchedCount) * 25);
     }
-
-    // ── 다수 매칭 보너스 (max +15) ────────────────────────────
-    // 2개 이상 매칭 시 차등 보너스 → 변별력 확보
-    if (matchedCount >= 4) score += 15;
-    else if (matchedCount >= 3) score += 10;
-    else if (matchedCount >= 2) score += 5;
-
-    // ── 완전 불일치 패널티 (-10) ──────────────────────────────
-    if (matchedCount === 0) score -= 10;
+    if (matchedCount >= 4) d.multiScore = 15;
+    else if (matchedCount >= 3) d.multiScore = 10;
+    else if (matchedCount >= 2) d.multiScore = 5;
+    if (matchedCount === 0) d.penalty -= 10;
   } else {
-    score -= 15;
+    d.penalty -= 15;
   }
 
-  return Math.min(100, Math.max(0, score));
+  const total = Math.min(100, Math.max(0, d.roleScore + d.expScore + d.skillScore + d.fitScore + d.multiScore + d.penalty));
+  return detailed ? { score: total, ...d } : total;
 }
 
 function generateInterviewQuestionsLocal(topJobs, user) {
@@ -196,6 +187,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('input');
   const [activeInterviewTab, setActiveInterviewTab] = useState(0);
   const [visibleJobs, setVisibleJobs] = useState(10);
+  const [scoreFilter, setScoreFilter] = useState('all'); // 'all' | '90+' | '80+' | '70+' | '60+' | '60-'
   const [selectedCompanyModal, setSelectedCompanyModal] = useState(null);
 
   // 로딩 / 메시지
@@ -455,9 +447,9 @@ export default function App() {
   // ── 공고 매칭 점수 계산 (pinned jobs 우선 반영) ────────────────────────
   const computeJobsWithScores = () => {
     const allWithScores = jobs.map((job) => {
-      const score = calculateMatchScore(userInfo, job);
+      const detail = calculateMatchScore(userInfo, job, true);
       const companyInfo = companies.find((c) => c.name === job.company);
-      return { ...job, score, companyInfo };
+      return { ...job, score: detail.score, matchDetail: detail, companyInfo };
     }).sort((a, b) => b.score - a.score);
 
     // 지정된 우선 공고(pinned)를 top3 자리에 끼워넣기
@@ -1258,10 +1250,33 @@ AI 분석 요약:
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                 <div>
                   <h2 className="text-3xl font-bold text-slate-800 mb-2">추천 공고 리스트</h2>
-                  <p className="text-slate-500">입력하신 보유 역량에 적합한 공고 순위입니다.</p>
+                  <p className="text-slate-500 mb-4">입력하신 보유 역량에 적합한 공고 순위입니다.</p>
+                  {/* 점수 구간 필터 */}
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: 'all', label: '전체', color: 'bg-slate-100 text-slate-700' },
+                      { key: '90+', label: '90점↑', color: 'bg-emerald-100 text-emerald-700' },
+                      { key: '80+', label: '80점↑', color: 'bg-green-100 text-green-700' },
+                      { key: '70+', label: '70점↑', color: 'bg-blue-100 text-blue-700' },
+                      { key: '60+', label: '60점↑', color: 'bg-amber-100 text-amber-700' },
+                      { key: '60-', label: '60점↓', color: 'bg-red-100 text-red-700' },
+                    ].map(f => (
+                      <button key={f.key} onClick={() => { setScoreFilter(f.key); setVisibleJobs(10); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${scoreFilter === f.key ? f.color + ' border-current shadow-sm' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}>
+                        {f.label}
+                        <span className="ml-1 opacity-60">
+                          ({f.key === 'all' ? recommendedJobs.length
+                            : f.key === '60-' ? recommendedJobs.filter(j => j.score < 60).length
+                            : recommendedJobs.filter(j => j.score >= parseInt(f.key)).length})
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="grid gap-4">
-                  {recommendedJobs.slice(0, visibleJobs).map((job, idx) => (
+                  {recommendedJobs
+                    .filter(j => scoreFilter === 'all' ? true : scoreFilter === '60-' ? j.score < 60 : j.score >= parseInt(scoreFilter))
+                    .slice(0, visibleJobs).map((job, idx) => (
                     <div key={job.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 transition-all hover:shadow-md hover:border-indigo-200">
                       <div className="flex-1 w-full">
                         <div className="flex items-center gap-2 mb-2">
@@ -1276,7 +1291,39 @@ AI 분석 요약:
                             <span key={skill} className="text-xs font-medium bg-slate-50 border border-slate-200 px-2 py-1 rounded-md text-slate-600"># {skill}</span>
                           ))}
                         </div>
-                        <div className="mt-4 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 flex items-center gap-2 overflow-hidden">
+                        {/* 매칭 상세 분석 */}
+                        {job.matchDetail && (
+                          <div className="mt-3 bg-slate-50 rounded-lg border border-slate-100 p-3">
+                            <div className="grid grid-cols-5 gap-1 text-center mb-2">
+                              {[
+                                { label: '직군', score: job.matchDetail.roleScore, max: 15, color: 'bg-blue-500' },
+                                { label: '경력', score: job.matchDetail.expScore, max: 15, color: 'bg-green-500' },
+                                { label: '스킬', score: job.matchDetail.skillScore, max: 30, color: 'bg-purple-500' },
+                                { label: '정합도', score: job.matchDetail.fitScore, max: 25, color: 'bg-orange-500' },
+                                { label: '복수매칭', score: job.matchDetail.multiScore, max: 15, color: 'bg-pink-500' },
+                              ].map(item => (
+                                <div key={item.label}>
+                                  <div className="text-[10px] text-slate-500 mb-1">{item.label}</div>
+                                  <div className="w-full bg-slate-200 rounded-full h-1.5">
+                                    <div className={`h-full rounded-full ${item.color}`} style={{ width: `${item.max > 0 ? (item.score / item.max) * 100 : 0}%` }} />
+                                  </div>
+                                  <div className="text-[10px] font-bold text-slate-600 mt-0.5">{item.score}/{item.max}</div>
+                                </div>
+                              ))}
+                            </div>
+                            {job.matchDetail.matchedSkills.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {job.matchDetail.matchedSkills.map((s, i) => (
+                                  <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">{s.name} ({s.level})</span>
+                                ))}
+                                {job.matchDetail.unmatchedSkills.map((s, i) => (
+                                  <span key={'u'+i} className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-400 line-through">{s}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="mt-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 flex items-center gap-2 overflow-hidden">
                           <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap shrink-0">직접 링크:</span>
                           <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-indigo-500 hover:text-indigo-700 truncate underline underline-offset-2" title={job.url}>{job.url}</a>
                         </div>
@@ -1320,13 +1367,16 @@ AI 분석 요약:
                     </div>
                   ))}
                 </div>
-                {visibleJobs < recommendedJobs.length && (
-                  <div className="flex justify-center pt-4">
-                    <button onClick={() => setVisibleJobs((prev) => prev + 5)} className="bg-white border border-slate-200 text-slate-600 font-bold py-3 px-8 rounded-full shadow-sm hover:bg-slate-50 transition-colors">
-                      더보기 ({visibleJobs} / {recommendedJobs.length})
-                    </button>
-                  </div>
-                )}
+                {(() => {
+                  const filtered = recommendedJobs.filter(j => scoreFilter === 'all' ? true : scoreFilter === '60-' ? j.score < 60 : j.score >= parseInt(scoreFilter));
+                  return visibleJobs < filtered.length ? (
+                    <div className="flex justify-center pt-4">
+                      <button onClick={() => setVisibleJobs(prev => prev + 10)} className="bg-white border border-slate-200 text-slate-600 font-bold py-3 px-8 rounded-full shadow-sm hover:bg-slate-50 transition-colors">
+                        더보기 ({Math.min(visibleJobs, filtered.length)} / {filtered.length})
+                      </button>
+                    </div>
+                  ) : null;
+                })()}
               </div>
             ) : renderEmptyState(<Target size={48} />, '추천 공고 결과가 없습니다', '정보를 입력하고 AI 분석을 진행해주세요.')
           )}
