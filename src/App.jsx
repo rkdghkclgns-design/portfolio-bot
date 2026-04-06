@@ -36,13 +36,13 @@ function skillMatches(userSkillName, reqSkill) {
   return r.includes(u) || u.includes(r);
 }
 
-// ── 로컬 Fallback 로직 (v2 — 변별력 강화) ─────────────────────────────────
+// ── 매칭 점수 v3 — 변별력 강화 ───────────────────────────────────────────
 // 배점 구조 (최대 100점):
-//   직군 매칭            +15   (같은 직군이면 기본 가점)
+//   직군 매칭            +15
 //   경력 매칭            +15   (0차이=15, 1=10, 2=5)
-//   스킬 숙련도 매칭     +25   (上=1.5, 中=0.8, 下=0.3 — 上 우대 격차 확대)
-//   주력(上) 정합도      +25   (유저 上 스킬이 공고 요구의 핵심인 비율)
-//   커버리지 보너스      +10   (공고 요구 스킬 중 유저가 커버하는 비율)
+//   스킬 가중 매칭       +30   (上=1.5, 中=1.0, 下=0.4 × 매칭건별 배점)
+//   스킬 정합도 보너스   +25   (매칭된 스킬의 숙련도 가중 평균 × 커버리지)
+//   다수 매칭 보너스     +15   (2개+5, 3개+10, 4개이상+15)
 //   패널티: reqSkills없음 -15, 완전불일치 -10, 경력초과 -5
 // ────────────────────────────────────────────────────────────────────────────
 function calculateMatchScore(user, job) {
@@ -59,48 +59,44 @@ function calculateMatchScore(user, job) {
   if (expDiff === 0) score += 15;
   else if (expDiff === 1) score += 10;
   else if (expDiff === 2) score += 5;
-
-  // ── 경력 초과 패널티 (-5) ─────────────────────────────────
   if (jobExp === 0 && userExp >= 5) score -= 5;
 
   // ── 스킬 영역 ─────────────────────────────────────────────
   if (job.reqSkills && job.reqSkills.length > 0) {
     const reqLen = job.reqSkills.length;
-    let skillScore = 0;
+    let weightedSum = 0;
     let matchedCount = 0;
-    let topHitCount = 0;   // 유저의 上 스킬이 매칭된 횟수
-
-    const topSkills = user.skills.filter((s) => s.level === '상');
 
     job.reqSkills.forEach((req) => {
       const matched = user.skills.find((s) => skillMatches(s.name, req));
       if (matched) {
         matchedCount++;
-        // ★ 숙련도 가중치: 上=1.5, 中=0.8, 下=0.3 (上과 中의 격차를 크게)
-        const levelWeight = matched.level === '상' ? 1.5 : matched.level === '중' ? 0.8 : 0.3;
-        skillScore += (25 / reqLen) * levelWeight;
-        // 이 매칭이 유저의 上 스킬인지 추적
-        if (matched.level === '상') topHitCount++;
+        const lw = matched.level === '상' ? 1.5 : matched.level === '중' ? 1.0 : 0.4;
+        weightedSum += lw;
       }
     });
-    score += Math.round(Math.min(25, skillScore));
 
-    // ── 주력(上) 정합도 보너스 (max +25) ─────────────────────
-    // 핵심: 공고 요구 스킬 중, 유저의 上 스킬로 커버되는 비율
-    // → 시스템기획 上 유저에게 "시스템 기획" 요구 공고는 높은 점수
-    // → 같은 유저에게 "시나리오" 요구 공고는 낮은 점수 (上 스킬이 아니므로)
-    if (topSkills.length > 0 && reqLen > 0) {
-      const topRatio = topHitCount / reqLen;
-      score += Math.round(topRatio * 25);
+    // ── 스킬 가중 매칭 (max +30) ─────────────────────────────
+    // 매칭된 각 스킬의 가중치 합 / 요구 스킬 수 × 30
+    const skillScore = reqLen > 0 ? (weightedSum / reqLen) * 30 : 0;
+    score += Math.round(Math.min(30, skillScore));
+
+    // ── 스킬 정합도 보너스 (max +25) ─────────────────────────
+    // 핵심: 매칭 비율 × 평균 숙련도 가중치 → 스킬이 많이/높게 매칭될수록 높음
+    if (matchedCount > 0) {
+      const avgWeight = weightedSum / matchedCount; // 평균 숙련도 (0.4~1.5)
+      const coverageRatio = matchedCount / reqLen;
+      score += Math.round(coverageRatio * avgWeight * 25);
     }
 
-    // ── 커버리지 보너스 (max +10) ─────────────────────────────
-    const coverageRatio = matchedCount / reqLen;
-    score += Math.round(coverageRatio * 10);
+    // ── 다수 매칭 보너스 (max +15) ────────────────────────────
+    // 2개 이상 매칭 시 차등 보너스 → 변별력 확보
+    if (matchedCount >= 4) score += 15;
+    else if (matchedCount >= 3) score += 10;
+    else if (matchedCount >= 2) score += 5;
 
     // ── 완전 불일치 패널티 (-10) ──────────────────────────────
     if (matchedCount === 0) score -= 10;
-
   } else {
     score -= 15;
   }
