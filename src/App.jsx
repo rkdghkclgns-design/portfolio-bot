@@ -561,14 +561,16 @@ export default function App() {
       setVisibleJobs(10);
       const top3 = jobsWithScores.slice(0, 3);
 
-      // 파일 변환 (Gemini는 파일 지원)
+      // 파일 변환 (Supabase Edge Function 4MB 제한 → 이력서+자소서만, 포트폴리오 제외)
       let fileParts = [];
       if (currentProvider?.supportsFiles) {
-        if (resumeFile)       fileParts.push({ text: '이력서 첨부:' }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(resumeFile) } });
-        if (coverLetterFile)  fileParts.push({ text: '자기소개서 첨부:' }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(coverLetterFile) } });
-        for (let i = 0; i < portfolioFiles.length; i++) {
-          fileParts.push({ text: `포트폴리오 ${i + 1}:` }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(portfolioFiles[i]) } });
-        }
+        try {
+          if (resumeFile && resumeFile.size < 2 * 1024 * 1024)
+            fileParts.push({ text: '이력서 첨부:' }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(resumeFile) } });
+          if (coverLetterFile && coverLetterFile.size < 2 * 1024 * 1024)
+            fileParts.push({ text: '자기소개서 첨부:' }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(coverLetterFile) } });
+          // 포트폴리오는 크기 제한으로 API에 포함하지 않음 (프로필 기반 분석)
+        } catch { fileParts = []; }
       }
 
       // Supabase gemini-proxy 경유 (API 키 불필요)
@@ -1171,17 +1173,31 @@ AI 분석 요약:
                   </div>
                 </div>
 
-                {/* ② 공고별 맞춤 분석 — 세로 나열 */}
+                {/* ② 공고별 맞춤 분석 — 중복 회사 제거, 미지정 시 안내 */}
                 {results.coverLetterImprovements && !Array.isArray(results.coverLetterImprovements) && (
                   <div className="space-y-4">
                     <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
                       <Target size={18} className="text-indigo-500" /> 공고별 맞춤 분석
                     </h3>
-                    {[
-                      { key: 'rank1', rankLabel: '1순위', color: 'sky',     border: 'border-sky-200',     bg: 'bg-sky-50',     badge: 'bg-sky-100 text-sky-700',     icon: 'text-sky-500'     },
-                      { key: 'rank2', rankLabel: '2순위', color: 'emerald', border: 'border-emerald-200', bg: 'bg-emerald-50', badge: 'bg-emerald-100 text-emerald-700', icon: 'text-emerald-500' },
-                      { key: 'rank3', rankLabel: '3순위', color: 'amber',   border: 'border-amber-200',   bg: 'bg-amber-50',   badge: 'bg-amber-100 text-amber-700',   icon: 'text-amber-500'   },
-                    ].map(({ key, rankLabel, border, bg, badge, icon }) => {
+                    {recommendedJobs.length === 0 ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
+                        <p className="text-amber-700 text-sm font-bold mb-2">추천 공고가 없습니다</p>
+                        <p className="text-amber-600 text-xs">정보 입력 탭에서 &quot;우선 공고 지정&quot;에 GameJob 공고 번호를 입력하면 맞춤 분석이 제공됩니다.</p>
+                      </div>
+                    ) : null}
+                    {(() => {
+                      const seen = new Set();
+                      return [
+                        { key: 'rank1', rankLabel: '1순위', border: 'border-sky-200', bg: 'bg-sky-50', badge: 'bg-sky-100 text-sky-700', icon: 'text-sky-500' },
+                        { key: 'rank2', rankLabel: '2순위', border: 'border-emerald-200', bg: 'bg-emerald-50', badge: 'bg-emerald-100 text-emerald-700', icon: 'text-emerald-500' },
+                        { key: 'rank3', rankLabel: '3순위', border: 'border-amber-200', bg: 'bg-amber-50', badge: 'bg-amber-100 text-amber-700', icon: 'text-amber-500' },
+                      ].filter(({ key }) => {
+                        const company = recommendedJobs[parseInt(key.replace('rank','')) - 1]?.company;
+                        if (!company || seen.has(company)) return false;
+                        seen.add(company);
+                        return true;
+                      });
+                    })().map(({ key, rankLabel, border, bg, badge, icon }) => {
                       const items = results.coverLetterImprovements?.[key] ?? [];
                       const jobName = recommendedJobs[parseInt(key.replace('rank','')) - 1]?.company ?? `${rankLabel} 공고`;
                       return (
@@ -1285,9 +1301,15 @@ AI 분석 요약:
                           <a href={job.url} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 rounded-lg transition-colors shadow-sm">
                             공고 바로가기 <ExternalLink size={12} />
                           </a>
-                          <button onClick={() => setSelectedCompanyModal(job.companyInfo)} className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-lg transition-colors border border-slate-200">
-                            회사 정보 보기 <Building2 size={12} />
-                          </button>
+                          {job.companyInfo ? (
+                            <button onClick={() => setSelectedCompanyModal(job.companyInfo)} className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-lg transition-colors border border-slate-200">
+                              회사 정보 보기 <Building2 size={12} />
+                            </button>
+                          ) : (
+                            <a href={`https://www.google.com/search?q=${encodeURIComponent(job.company + ' 게임회사')}`} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-1.5 bg-slate-50 text-slate-400 text-xs font-bold py-2.5 rounded-lg border border-slate-100">
+                              {job.company} 검색 <ExternalLink size={12} />
+                            </a>
+                          )}
                         </div>
                       </div>
                     </div>
