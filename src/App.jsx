@@ -110,12 +110,13 @@ function calculateMatchScore(user, job) {
 
 function generateInterviewQuestionsLocal(topJobs, user) {
   return topJobs.map((job, idx) => {
+    const reqSkills = Array.isArray(job.reqSkills) ? job.reqSkills : [];
     const matched = user.skills.filter((s) =>
-      job.reqSkills.some(
+      reqSkills.some(
         (req) => req.toLowerCase().includes(s.name.toLowerCase()) || s.name.toLowerCase().includes(req.toLowerCase())
       )
     );
-    const topSkill = matched.length > 0 ? matched[0] : { name: job.reqSkills[0] || '해당 기술', level: '중' };
+    const topSkill = matched.length > 0 ? matched[0] : { name: reqSkills[0] || '해당 기술', level: '중' };
     const q1 = job.role.includes('기획')
       ? `[핵심 지표 검증]\n"${topSkill.name}" 역량을 바탕으로 신규 시스템 기획 시, 가장 먼저 확인할 3가지 지표와 그 이유는 무엇인가요?`
       : `[직무 기여도]\n당사 프로젝트에서 "${topSkill.name}" 기술을 구체적으로 어떻게 활용하여 기여할 수 있는지 2가지 사례를 들어 설명해주세요.`;
@@ -684,14 +685,26 @@ AI 분석 요약:
 
   // ── 저장 기능 ───────────────────────────────────────────────────────
   const [saveStatus, setSaveStatus] = useState('');
-  const saveProfile = () => {
+  const saveProfile = async () => {
     try {
+      // 강사피드백이 비어있고 결과가 있으면 AI 초고 생성
+      const isEmpty = !instructorFeedback.general && !instructorFeedback.resume;
+      if (isEmpty && results) {
+        setSaveStatus('generating');
+        await generateInstructorDraft(results, userInfo);
+      }
+      // 최신 state를 반영하기 위해 약간 지연
+      setTimeout(() => {
+        const saveData = { userInfo, results, instructorFeedback, savedAt: new Date().toISOString() };
+        localStorage.setItem('portfolio_bot_save', JSON.stringify(saveData));
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus(''), 3000);
+      }, isEmpty && results ? 500 : 0);
+    } catch (err) {
+      // 초고 생성 실패해도 저장은 진행
       const saveData = { userInfo, results, instructorFeedback, savedAt: new Date().toISOString() };
       localStorage.setItem('portfolio_bot_save', JSON.stringify(saveData));
       setSaveStatus('saved');
-      setTimeout(() => setSaveStatus(''), 3000);
-    } catch (err) {
-      setSaveStatus('error');
       setTimeout(() => setSaveStatus(''), 3000);
     }
   };
@@ -962,12 +975,15 @@ AI 분석 요약:
               {/* 저장 버튼 */}
               <button
                 onClick={saveProfile}
-                className={`w-full font-bold py-3 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 ${
-                  saveStatus === 'saved' ? 'bg-emerald-500 text-white' : saveStatus === 'error' ? 'bg-red-500 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                disabled={saveStatus === 'generating'}
+                className={`w-full font-bold py-3 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 disabled:opacity-70 ${
+                  saveStatus === 'saved' ? 'bg-emerald-500 text-white'
+                    : saveStatus === 'generating' ? 'bg-amber-500 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
                 }`}
               >
                 {saveStatus === 'saved' ? <><CheckCircle size={18} /> 저장 완료!</>
-                  : saveStatus === 'error' ? <><AlertCircle size={18} /> 저장 실패</>
+                  : saveStatus === 'generating' ? <><Loader2 size={18} className="animate-spin" /> AI 강사피드백 생성 중...</>
                   : <><Download size={18} /> 프로필 및 분석 결과 저장</>}
               </button>
 
