@@ -1,8 +1,8 @@
 /**
- * Gemini Client - Supabase Edge Function gemini-proxy 호출
+ * Gemini Client - Supabase Edge Function gemini-proxy 전용
  *
- * GitHub Pages 배포 시 Express 서버 없이 직접 Gemini API를 호출한다.
- * Supabase Edge Function이 API 키를 관리하므로 프론트엔드에 키 노출이 없다.
+ * Supabase Edge Function이 GEMINI_API_KEY를 서버측에서 관리하므로
+ * 프론트엔드에 API 키 입력이 불필요하다.
  */
 
 const SUPABASE_URL = 'https://pkwbqbxuujpcvndpacsc.supabase.co';
@@ -41,39 +41,12 @@ export async function callGeminiProxy({ contents, systemInstruction, generationC
 }
 
 /**
- * 서버 사용 가능 여부 확인
+ * AI 분석 - Supabase gemini-proxy 경유 (API 키 불필요)
  */
-export async function isServerAvailable() {
-  try {
-    const res = await fetch('/api/models', { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * API 호출 - 서버가 있으면 서버 사용, 없으면 Supabase 프록시 직접 호출
- */
-export async function smartAnalyze({ provider, apiKey, modelId, top3, profile, hasFiles, hasPortfolioFile, fileParts, systemPrompt, geminiResponseSchema }) {
-  // 1) 서버가 살아있으면 기존 방식 사용
-  const serverAlive = await isServerAvailable();
-  if (serverAlive) {
-    const res = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider, apiKey, modelId, top3, profile, hasFiles, hasPortfolioFile, fileParts }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `서버 오류 (${res.status})`);
-    return data;
-  }
-
-  // 2) 서버 없음 (GitHub Pages 모드) → Supabase gemini-proxy 직접 호출
+export async function analyzeViaProxy({ modelId, top3, profile, hasFiles, hasPortfolioFile, fileParts }) {
   const { buildUserPromptClient } = await import('./prompt-builder.js');
   const userPrompt = buildUserPromptClient({ top3, profile, hasFiles: !!hasFiles, hasPortfolioFile: !!hasPortfolioFile });
 
-  // 시스템 프롬프트 & JSON 스키마를 public/ 에서 로드
   const [sysPromptText, schemaJson] = await Promise.all([
     fetch('./prompts/system-prompt.md').then((r) => r.ok ? r.text() : '').catch(() => ''),
     fetch('./prompts/analysis-schema.json').then((r) => r.ok ? r.json() : null).catch(() => null),
@@ -101,16 +74,16 @@ export async function smartAnalyze({ provider, apiKey, modelId, top3, profile, h
 }
 
 /**
- * API 키 검증 - Supabase 프록시 경유
+ * Supabase 프록시 연결 확인
  */
-export async function validateKeyViaProxy() {
+export async function checkProxyHealth() {
   try {
     const data = await callGeminiProxy({
       model: 'gemini-2.5-flash',
-      contents: [{ parts: [{ text: 'Hello' }] }],
+      contents: [{ parts: [{ text: 'ping' }] }],
     });
-    return { valid: !!data.candidates, error: null };
+    return { ok: !!data.candidates, error: null };
   } catch (err) {
-    return { valid: false, error: err.message };
+    return { ok: false, error: err.message };
   }
 }

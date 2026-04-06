@@ -8,7 +8,7 @@ import {
   Pin, Search, Hash,
 } from 'lucide-react';
 import { SKILL_CATEGORIES, ROLES } from './data/skills';
-import { smartAnalyze, validateKeyViaProxy, isServerAvailable } from './lib/gemini-client';
+import { analyzeViaProxy } from './lib/gemini-client';
 import { useModels } from './hooks/useModels';
 import ModelSelector from './components/ModelSelector';
 import AssignmentTest from './components/AssignmentTest';
@@ -151,9 +151,7 @@ export default function App() {
   const { enabledProviders, disabledProviders, loading: modelsLoading, getDefaultModel } = useModels();
   const [selectedProvider, setSelectedProvider] = useState('gemini');
   const [selectedModelId, setSelectedModelId] = useState('');
-  const [apiKeys, setApiKeys] = useState({});
-  const [keyStatus, setKeyStatus] = useState({});
-  const [isKeyValidating, setIsKeyValidating] = useState(false);
+  // API 키는 Supabase Edge Function(gemini-proxy)이 서버측에서 관리
 
   // 모델 로드 완료 시 기본 모델 선택
   useEffect(() => {
@@ -454,34 +452,6 @@ export default function App() {
       reader.onerror = (err) => reject(err);
     });
 
-  // ── API 키 검증 ───────────────────────────────────────────────────────
-  const verifyApiKey = async () => {
-    const apiKey = apiKeys[selectedProvider];
-    // API 키 없이도 Supabase 프록시 모드에서는 자동 검증
-    setIsKeyValidating(true);
-    setKeyStatus((prev) => ({ ...prev, [selectedProvider]: 'none' }));
-    try {
-      const serverAlive = await isServerAvailable();
-      if (serverAlive && apiKey) {
-        const res = await fetch('/api/validate-key', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider: selectedProvider, apiKey, modelId: selectedModelId }),
-        });
-        const data = await res.json();
-        setKeyStatus((prev) => ({ ...prev, [selectedProvider]: data.valid ? 'valid' : 'invalid' }));
-      } else {
-        // Supabase 프록시 모드 — API 키 불필요
-        const result = await validateKeyViaProxy();
-        setKeyStatus((prev) => ({ ...prev, [selectedProvider]: result.valid ? 'valid' : 'invalid' }));
-      }
-    } catch {
-      setKeyStatus((prev) => ({ ...prev, [selectedProvider]: 'invalid' }));
-    } finally {
-      setIsKeyValidating(false);
-    }
-  };
-
   // ── 포트폴리오 파일 핸들러 ───────────────────────────────────────────
   const handlePortfolioChange = (e) => {
     const files = Array.from(e.target.files);
@@ -588,7 +558,6 @@ export default function App() {
       setError('지원자 이름과 최소 1개 이상의 스킬을 입력해주세요.');
       return;
     }
-    const apiKey = apiKeys[selectedProvider];
     setLoading(true);
     setError('');
     setInfoMessage('');
@@ -599,7 +568,7 @@ export default function App() {
       setVisibleJobs(10);
       const top3 = jobsWithScores.slice(0, 3);
 
-      // 파일 변환 (파일 지원 프로바이더만)
+      // 파일 변환 (Gemini는 파일 지원)
       let fileParts = [];
       if (currentProvider?.supportsFiles) {
         if (resumeFile)       fileParts.push({ text: '이력서 첨부:' }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(resumeFile) } });
@@ -609,18 +578,8 @@ export default function App() {
         }
       }
 
-      if (!apiKey) {
-        // API 키 없어도 Supabase 프록시 모드에서는 동작 시도
-        const serverAlive = await isServerAvailable();
-        if (serverAlive) {
-          applyLocalFallback(jobsWithScores, 'API 키가 입력되지 않아 로컬 분석 엔진으로 결과를 생성했습니다. 더 정확한 피드백을 위해 API 키를 입력해주세요.');
-          return;
-        }
-      }
-
-      const data = await smartAnalyze({
-        provider: selectedProvider,
-        apiKey,
+      // Supabase gemini-proxy 경유 (API 키 불필요)
+      const data = await analyzeViaProxy({
         modelId: selectedModelId,
         top3,
         profile: userInfo,
@@ -726,13 +685,8 @@ export default function App() {
           disabledProviders={disabledProviders}
           selectedProvider={selectedProvider}
           selectedModelId={selectedModelId}
-          apiKey={apiKeys[selectedProvider] || ''}
-          keyStatus={keyStatus[selectedProvider] || 'none'}
-          isKeyValidating={isKeyValidating}
           onProviderChange={handleProviderChange}
           onModelChange={setSelectedModelId}
-          onApiKeyChange={(val) => setApiKeys((prev) => ({ ...prev, [selectedProvider]: val }))}
-          onVerifyKey={verifyApiKey}
           modelsLoading={modelsLoading}
         />
       </div>
@@ -1316,7 +1270,6 @@ export default function App() {
             <PersonalityTest
               selectedProvider={selectedProvider}
               selectedModelId={selectedModelId}
-              apiKey={apiKeys[selectedProvider] || ''}
             />
           </div>
 

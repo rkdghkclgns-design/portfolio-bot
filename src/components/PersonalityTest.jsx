@@ -303,7 +303,7 @@ function openPdfPrint(result, meta) {
 // ══════════════════════════════════════════════════════════════════════════
 // 인성검사 메인 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════
-export default function PersonalityTest({ selectedProvider, selectedModelId, apiKey }) {
+export default function PersonalityTest({ selectedProvider, selectedModelId }) {
   const [step, setStep] = useState('intro');
   const [timeLeft, setTimeLeft] = useState(TOTAL_TIME);
   const [practiceAnswers, setPracticeAnswers] = useState({});
@@ -373,33 +373,28 @@ export default function PersonalityTest({ selectedProvider, selectedModelId, api
     setAiLoading(true);
     setAiError('');
 
-    // API 키 없으면 로컬 분석
-    if (!apiKey) {
-      const local = analyzeLocally(likertAnswers, binaryAnswers);
-      setAiResult(local);
-      setAnalysisSource('local');
-      setAiLoading(false);
-      return;
-    }
-
     try {
-      const res = await fetch('/api/analyze-personality', {
+      // 서버 → Supabase 프록시 폴백
+      let res = await fetch('/api/analyze-personality', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: selectedProvider,
-          apiKey,
           modelId: selectedModelId,
           likertAnswers,
           binaryAnswers,
           questions: MAIN_QUESTIONS,
           binaryQuestions: BINARY_QUESTIONS,
         }),
-      });
+      }).catch(() => null);
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || `서버 오류 (${res.status})`);
+      if (!res || !res.ok) {
+        // 서버 없음 → 로컬 분석으로 폴백
+        const local = analyzeLocally(likertAnswers, binaryAnswers);
+        setAiResult(local);
+        setAnalysisSource('local');
+        setAiLoading(false);
+        return;
       }
 
       const data = await res.json();
@@ -705,7 +700,7 @@ export default function PersonalityTest({ selectedProvider, selectedModelId, api
                 {aiLoading ? <><Loader2 size={16} className="animate-spin" /> AI 분석 중...</> : <><Sparkles size={16} /> AI 분석 요청</>}
               </button>
             )}
-            {aiResult && analysisSource === 'local' && apiKey && !aiLoading && (
+            {aiResult && analysisSource === 'local' && !aiLoading && (
               <button onClick={requestAiAnalysis}
                 className="flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl transition-all text-sm shadow-lg">
                 <Sparkles size={16} /> AI로 재분석하기
@@ -770,20 +765,16 @@ export default function PersonalityTest({ selectedProvider, selectedModelId, api
               <div className="rounded-xl p-3 text-center text-xs font-bold bg-violet-50 border border-violet-200 text-violet-700">
                 AI 분석 완료 ({selectedProvider})
               </div>
-            ) : apiKey ? (
+            ) : (
               <div className="rounded-xl p-4 bg-sky-50 border border-sky-200 flex items-center justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold text-sky-700">로컬 분석 엔진 결과입니다.</p>
-                  <p className="text-xs text-sky-600 mt-0.5">API 키가 감지되었습니다 — 위 버튼 또는 아래 버튼으로 AI 재분석을 요청할 수 있습니다.</p>
+                  <p className="text-xs text-sky-600 mt-0.5">위 버튼 또는 아래 버튼으로 AI 재분석을 요청할 수 있습니다.</p>
                 </div>
                 <button onClick={requestAiAnalysis} disabled={aiLoading}
                   className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-lg transition-all text-xs shadow disabled:opacity-70">
                   {aiLoading ? <><Loader2 size={13} className="animate-spin" /> 분석 중...</> : <><Sparkles size={13} /> AI 재분석</>}
                 </button>
-              </div>
-            ) : (
-              <div className="rounded-xl p-3 text-center text-xs font-bold bg-slate-50 border border-slate-200 text-slate-600">
-                로컬 분석 엔진으로 결과를 생성했습니다. AI 분석을 위해 API 키를 입력해주세요.
               </div>
             )}
 
