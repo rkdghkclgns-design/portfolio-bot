@@ -448,8 +448,8 @@ export default function App() {
   // ── 포트폴리오 파일 핸들러 ───────────────────────────────────────────
   const handlePortfolioChange = (e) => {
     const files = Array.from(e.target.files);
-    if (portfolioFiles.length + files.length > 10) {
-      setError('포트폴리오는 최대 10개까지만 업로드 가능합니다.');
+    if (portfolioFiles.length + files.length > 8) {
+      setError('포트폴리오는 최대 8개까지만 업로드 가능합니다.');
       return;
     }
     setPortfolioFiles((prev) => [...prev, ...files]);
@@ -563,24 +563,20 @@ export default function App() {
       setVisibleJobs(10);
       const top3 = jobsWithScores.slice(0, 3);
 
-      // 파일 변환 (Supabase Edge Function 제한 대응 — 총 5MB 이내)
+      // 파일 변환 (이력서 + 자소서 + 포트폴리오 최대 8개, 각 10MB)
       let fileParts = [];
       if (currentProvider?.supportsFiles) {
         try {
-          let totalSize = 0;
-          const MAX_TOTAL = 5 * 1024 * 1024;
-          const MAX_FILE = 2 * 1024 * 1024;
+          const MAX_FILE = 10 * 1024 * 1024;
           const addFile = async (label, file) => {
-            if (!file || file.size > MAX_FILE || totalSize + file.size > MAX_TOTAL) return;
-            totalSize += file.size;
+            if (!file || file.size > MAX_FILE) return;
             fileParts.push({ text: label }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(file) } });
           };
           await addFile('이력서 첨부:', resumeFile);
           await addFile('자기소개서 첨부:', coverLetterFile);
-          for (let i = 0; i < Math.min(portfolioFiles.length, 3); i++) {
+          for (let i = 0; i < portfolioFiles.length; i++) {
             await addFile(`포트폴리오 ${i + 1}:`, portfolioFiles[i]);
           }
-          if (portfolioFiles.length > 3) fileParts.push({ text: `(포트폴리오 ${portfolioFiles.length - 3}건은 용량 제한으로 생략됨)` });
         } catch { fileParts = []; }
       }
 
@@ -963,20 +959,20 @@ AI 분석 요약:
                   <div className={`border border-slate-200 rounded-xl p-4 md:col-span-2 ${currentProvider && !currentProvider.supportsFiles ? 'opacity-50 pointer-events-none' : ''}`}>
                     <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center justify-between">
                       <span>포트폴리오 (PDF 다중)</span>
-                      <span className={`text-xs font-normal ${portfolioFiles.length >= 10 ? 'text-red-500 font-bold' : 'text-slate-400'}`}>
-                        {portfolioFiles.length} / 10
+                      <span className={`text-xs font-normal ${portfolioFiles.length >= 8 ? 'text-red-500 font-bold' : 'text-slate-400'}`}>
+                        {portfolioFiles.length} / 8
                       </span>
                     </label>
                     <input
                       type="file"
                       accept=".pdf"
                       multiple
-                      disabled={portfolioFiles.length >= 10}
+                      disabled={portfolioFiles.length >= 8}
                       onChange={handlePortfolioChange}
                       className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100 disabled:opacity-40 disabled:cursor-not-allowed"
                     />
-                    {portfolioFiles.length >= 10 && (
-                      <p className="mt-1 text-xs text-red-500">최대 10개까지 업로드할 수 있습니다.</p>
+                    {portfolioFiles.length >= 8 && (
+                      <p className="mt-1 text-xs text-red-500">최대 8개까지 업로드할 수 있습니다. (각 10MB 이하)</p>
                     )}
                     {portfolioFiles.length > 0 && (
                       <div className="mt-3 grid grid-cols-2 gap-2">
