@@ -43,7 +43,7 @@ export function buildUserPromptClient({ top3, profile, hasFiles, hasPortfolioFil
 - 지원자 이름: ${profile.name}
 - 희망 직무: ${profile.role}
 - 총 경력: ${profile.experience}년 ${Number(profile.experience) === 0 ? '(신입)' : '(경력)'}
-- 보유 기술 및 숙련도: ${profile.skills.map((s) => `${s.name}(${s.level})`).join(', ')}`;
+- 보유 기술 및 숙련도: ${(Array.isArray(profile.skills) ? profile.skills : []).map((s) => `${s.name}(${s.level})`).join(', ') || '없음'}`;
 
   const fileContext = hasFiles
     ? '### 첨부 파일\n첨부된 파일(이력서·자기소개서·포트폴리오)을 직접 분석하여 피드백에 반영하세요.'

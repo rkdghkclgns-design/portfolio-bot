@@ -598,11 +598,16 @@ export default function App() {
       generateInstructorDraft(safeData, userInfo);
     } catch (err) {
       console.warn('AI 분석 오류 → 로컬 Fallback:', err.message);
-      const jobsWithScores = computeJobsWithScores();
-      applyLocalFallback(
-        jobsWithScores,
-        `AI API 연동 오류로 로컬 분석 엔진으로 결과를 대체 생성했습니다. (${err.message})`
-      );
+      try {
+        const jobsWithScores = computeJobsWithScores();
+        applyLocalFallback(
+          jobsWithScores,
+          `AI API 연동 오류로 로컬 분석 엔진으로 결과를 대체 생성했습니다. (${err.message})`
+        );
+      } catch (fallbackErr) {
+        console.warn('로컬 Fallback도 실패:', fallbackErr.message);
+        setError(`분석 실패: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -616,7 +621,7 @@ export default function App() {
       const prompt = `당신은 게임 업계 취업 컨설팅 강사입니다. 아래 AI 분석 결과를 바탕으로 강사 피드백 초고를 작성하세요.
 
 지원자: ${profile.name} | 직군: ${profile.role} | 경력: ${profile.experience}년
-스킬: ${profile.skills.map(s => `${s.name}(${s.level})`).join(', ')}
+스킬: ${(profile.skills || []).map(s => `${s.name}(${s.level})`).join(', ')}
 
 AI 분석 요약:
 - 프로필: ${JSON.stringify(aiResults.profileAnalysis || {}).slice(0, 500)}
