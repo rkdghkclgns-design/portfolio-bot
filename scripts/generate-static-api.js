@@ -68,16 +68,11 @@ function generateJobs() {
   const dataDir = join(ROOT, 'data', 'jobs');
   if (!existsSync(dataDir)) { console.warn('[SKIP] data/jobs not found'); return; }
 
-  const indexPath = join(dataDir, '_index.json');
-  let jobs;
-  if (existsSync(indexPath)) {
-    jobs = loadJson(indexPath);
-  } else {
-    jobs = readdirSync(dataDir)
-      .filter(f => f.endsWith('.json') && f !== '_index.json')
-      .map(f => loadJson(join(dataDir, f)))
-      .filter(Boolean);
-  }
+  // _index.json은 메타데이터이므로, 항상 개별 job-*.json 파일을 읽음
+  const jobs = readdirSync(dataDir)
+    .filter(f => f.endsWith('.json') && f !== '_index.json')
+    .map(f => loadJson(join(dataDir, f)))
+    .filter(Boolean);
   writeFileSync(join(PUBLIC_API, 'jobs.json'), JSON.stringify(jobs, null, 2));
   console.log(`[OK] public/api/jobs.json (${Array.isArray(jobs) ? jobs.length : 'index'} entries)`);
 }
