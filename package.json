@@ -6,6 +6,7 @@
     "dev": "concurrently \"node server.js\" \"vite\"",
     "dev:front": "vite",
     "dev:back": "node server.js",
+    "prebuild": "node scripts/generate-static-api.js",
     "build": "vite build",
     "start": "node server.js",
     "preview": "vite preview"

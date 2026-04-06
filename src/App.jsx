@@ -171,12 +171,18 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const [compRes, jobRes] = await Promise.all([
-          fetch('/api/companies'),
-          fetch('/api/jobs'),
+        // 서버 → 정적 JSON 폴백 (GitHub Pages 대응)
+        async function fetchWithFallback(serverUrl, staticUrl) {
+          let res = await fetch(serverUrl).catch(() => null);
+          if (!res || !res.ok) res = await fetch(staticUrl).catch(() => null);
+          return res && res.ok ? res.json() : null;
+        }
+        const [compData, jobData] = await Promise.all([
+          fetchWithFallback('/api/companies', './api/companies.json'),
+          fetchWithFallback('/api/jobs', './api/jobs.json'),
         ]);
-        if (compRes.ok) setCompanies(await compRes.json());
-        if (jobRes.ok) setJobs(await jobRes.json());
+        if (compData) setCompanies(compData);
+        if (jobData) setJobs(jobData);
       } catch (err) {
         console.warn('데이터 로드 실패:', err.message);
       } finally {
@@ -190,8 +196,9 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/prompts/interview-basic');
-        if (res.ok) setInterviewBasicData(await res.json());
+        let res = await fetch('/api/prompts/interview-basic').catch(() => null);
+        if (!res || !res.ok) res = await fetch('./api/prompts/interview-basic.json').catch(() => null);
+        if (res && res.ok) setInterviewBasicData(await res.json());
       } catch { /* 서버 미응답 시 빈 배열 유지 */ }
     })();
   }, []);
@@ -268,7 +275,8 @@ export default function App() {
         );
         // 크롤링으로 새로 가져온 경우 jobs 목록도 갱신
         if (data.source === 'crawled') {
-          const jobRes = await fetch('/api/jobs');
+          let jobRes = await fetch('/api/jobs').catch(() => null);
+          if (!jobRes || !jobRes.ok) jobRes = await fetch('./api/jobs.json').catch(() => null);
           if (jobRes.ok) setJobs(await jobRes.json());
         }
       } else {
@@ -355,7 +363,8 @@ export default function App() {
           // 크롤링 완료 시 공고 데이터 리로드
           if (isDone) {
             evtSource.close();
-            const jobRes = await fetch('/api/jobs');
+            let jobRes = await fetch('/api/jobs').catch(() => null);
+          if (!jobRes || !jobRes.ok) jobRes = await fetch('./api/jobs.json').catch(() => null);
             if (jobRes.ok) setJobs(await jobRes.json());
           }
 
@@ -391,7 +400,7 @@ export default function App() {
               isError: isErr,
             }));
             if (!isErr) {
-              fetch('/api/jobs').then(r => r.ok ? r.json() : null).then(jobs => { if (jobs) setJobs(jobs); });
+              fetch('/api/jobs').catch(() => fetch('./api/jobs.json')).then(r => r.ok ? r.json() : null).then(jobs => { if (jobs) setJobs(jobs); });
             }
           }
         }).catch(() => {
