@@ -56,16 +56,7 @@ export default function ModelSelector({
             {p.label}
           </button>
         ))}
-        {disabledProviders.map((p) => (
-          <button
-            key={p.id}
-            disabled
-            className="flex-1 py-1.5 text-xs font-bold rounded-lg bg-slate-800/50 text-slate-600 border border-slate-700/50 cursor-not-allowed"
-            title="준비 중"
-          >
-            {p.label}
-          </button>
-        ))}
+        {/* 비활성 프로바이더는 표시하지 않음 */}
       </div>
 
       {/* 모델 드롭다운 */}
