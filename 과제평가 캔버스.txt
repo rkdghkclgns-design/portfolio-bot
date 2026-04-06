@@ -1,0 +1,393 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Clock, Video, CheckCircle, RefreshCcw, AlertCircle, Image as ImageIcon } from 'lucide-react';
+
+// --- 문제 및 피드백 데이터 ---
+const testData = [
+  {
+    id: 1,
+    type: 'text',
+    question: "1. 퀘스트 시놉시스 제작 (5문장)",
+    description: "주어진 제약 조건(5문장) 내에 기승전결이 있는 퀘스트 시놉시스를 작성하세요.",
+    feedback: {
+      intent: "기획자로서의 핵심 요약 능력, 내러티브 구성력, 그리고 '5문장'이라는 제약 조건 준수 여부를 평가합니다.",
+      ideal: "배경 설명 -> 사건 발생 -> 목표 부여 -> 갈등/위기 -> 보상 및 결과로 이어지는 깔끔한 5문장 구성.",
+      avoid: "제한을 어기고 6문장 이상 작성하거나, 너무 장황한 미사여구만 나열한 답변."
+    }
+  },
+  {
+    id: 2,
+    type: 'image-desc',
+    question: "2. 그림을 보고 무슨 상황인지 서술하라",
+    description: "아래 4컷의 상황(검은 로브, 누워있는 여인, 촛농이 떨어지는 랜턴, 얼굴에 촛농이 떨어짐)을 보고 현재 어떤 상황이 벌어지고 있는지 상황, 인물의 감정, 향후 전개될 일을 유추하여 서술하세요.",
+    imageUrl: "4컷.jfif", 
+    feedback: {
+      intent: "관찰력과 상황 묘사 능력, 정지된 화면에서 앞뒤 맥락을 상상해내는 기획적 상상력을 평가합니다.",
+      ideal: "시각적 정보(촛농, 표정 등)를 바탕으로 논리적인 인과관계를 설정하고 캐릭터의 목적을 생동감 있게 묘사한 답변.",
+      avoid: "단순히 '사람이 누워 있다' 수준의 1차원적인 사실 나열에 그치는 답변."
+    }
+  },
+  {
+    id: 3,
+    type: 'code',
+    question: "3. [코딩] 아래 4가지 상태를 정의하고 브랜치하라",
+    description: "상태머신(FSM)의 기본 개념을 활용하여 <달리기>, <점프>, <추락>, <공격 콤보> 상태의 전환(Branch) 조건을 작성하세요.",
+    example: `<Idle>\n  <BranchEvent="Input_Attack" Execute="Attack"/>\n</Idle>`,
+    feedback: {
+      intent: "FSM에 대한 이해도와 논리적 사고력을 평가합니다.",
+      ideal: "각 상태에서 넘어갈 수 있는 예외 처리가 논리적으로 구현된 코드.",
+      avoid: "상태 전환의 흐름이 끊기거나 비논리적인 구조."
+    }
+  },
+  {
+    id: 4,
+    type: 'code',
+    question: "4. [코딩] 본인이 생각하는 격투게임의 상태를 정의하고 브랜치하라",
+    description: "격투 게임의 핵심 캐릭터 상태를 3~5개 정의하고 상태 전환 트리를 작성하세요.",
+    feedback: {
+      intent: "특정 장르의 시스템에 대한 깊은 이해도를 평가합니다.",
+      ideal: "가드, 피격 경직 등 격투 게임 특유의 상태를 정의한 답변.",
+      avoid: "장르적 이해가 부족한 단순한 구조."
+    }
+  },
+  {
+    id: 5,
+    type: 'text',
+    question: "5. 인상깊었던 게임이 무엇인가? 그 이유는? 플레이타임은?",
+    description: "가장 깊게 플레이했거나 영감을 준 게임 한 가지를 선정하여 분석적으로 서술하세요.",
+    feedback: {
+      intent: "지원자의 게임 분석 능력을 확인합니다.",
+      ideal: "핵심 재미 요소나 독특한 시스템을 구체적으로 분석한 답변.",
+      avoid: "시스템 분석 없이 감상만 적은 답변."
+    }
+  },
+  {
+    id: 6,
+    type: 'text',
+    question: "6. 어떤 게임을 만들고 싶은가? 어떤 사람이 되고싶은가?",
+    description: "본인의 개발 철학과 커리어 비전을 서술하세요.",
+    feedback: {
+      intent: "지원자의 비전과 회사와의 컬쳐 핏을 확인합니다.",
+      ideal: "명확한 기획 철학과 회사의 방향성이 일치하는 답변.",
+      avoid: "뜬구름 잡는 추상적인 목표."
+    }
+  },
+  {
+    id: 7,
+    type: 'text',
+    question: "7. 인성/성실함/업무능력 세 가지 역량에 대해 본인이 생각하기에 점수를 표기하고 그 이유를 서술하라",
+    description: "각 항목을 10점 만점으로 평가하고 객관적인 근거를 제시하세요.",
+    feedback: {
+      intent: "자기 객관화 능력과 솔직함을 평가합니다.",
+      ideal: "강점은 사례로 뒷받침하고 부족한 점은 개선 의지를 보여주는 답변.",
+      avoid: "근거 없는 자화자찬."
+    }
+  },
+  {
+    id: 8,
+    type: 'text',
+    question: "8. 팀 활동을 하면서 성공했던 기억, 팀에서 작업 분배 방법, 그 이유를 서술하라",
+    description: "협업 경험을 바탕으로 본인의 롤과 문제 해결 방식을 설명하세요.",
+    feedback: {
+      intent: "협업 능력과 프로젝트 매니지먼트 역량을 평가합니다.",
+      ideal: "합리적으로 업무를 분배하고 갈등을 해결한 구체적인 사례 중심의 답변.",
+      avoid: "성공의 공을 본인에게만 돌리는 답변."
+    }
+  },
+  {
+    id: 9,
+    type: 'text',
+    question: "9. 회사에서 어떤 일을 이루고 싶은가?",
+    description: "입사 후 단기적/장기적 목표를 서술하세요.",
+    feedback: {
+      intent: "입사 후 기여 의지와 로드맵을 확인합니다.",
+      ideal: "실질적인 성과를 내겠다는 구체적인 포부.",
+      avoid: "수동적인 태도."
+    }
+  },
+  {
+    id: 10,
+    type: 'text',
+    question: "10. 최근 3년간 집요하게 노력했던 일은?",
+    description: "분야에 상관없이 가장 몰입했던 경험과 그 결과를 서술하세요.",
+    feedback: {
+      intent: "지원자의 근성과 몰입력을 평가합니다.",
+      ideal: "실패를 겪으면서도 끝까지 노력해 깨달음을 얻은 스토리텔링.",
+      avoid: "과정이 구체적이지 않은 답변."
+    }
+  },
+  {
+    id: 11,
+    type: 'text',
+    question: "11. 본인이 생각하는 '일'은 무엇인가?",
+    description: "직업관에 대한 본인만의 정의를 서술하세요.",
+    feedback: {
+      intent: "지원자의 근본적인 직업 의식을 확인합니다.",
+      ideal: "가치 창출과 책임감을 강조하는 성숙한 답변.",
+      avoid: "단순히 보상만을 위한 시간으로 치부하는 답변."
+    }
+  },
+  {
+    id: 12,
+    type: 'text',
+    question: "12. 게임에 여러 주요기능이 있는데 그중에 가장 중요하다고 생각하는건? 그 이유는?",
+    description: "게임의 본질에 대한 본인의 철학을 서술하세요.",
+    feedback: {
+      intent: "게임 디자인 우선순위에 대한 가치관을 확인합니다.",
+      ideal: "핵심 재미를 정의하고 논리적으로 설득하는 답변.",
+      avoid: "요소 간의 유기적 결합을 무시하는 답변."
+    }
+  },
+  {
+    id: 13,
+    type: 'text',
+    question: "13. 주변에서 이야기하는 본인의 단점은 무엇인가?",
+    description: "제3자의 시선에서 본 본인의 치명적인 단점 한 가지와 극복 과정을 서술하세요.",
+    feedback: {
+      intent: "진실성과 피드백 수용 태도를 평가합니다.",
+      ideal: "단점을 솔직하게 인정하고 구체적인 보완책을 제시하는 답변.",
+      avoid: "포장된 장점을 단점으로 말하는 답변."
+    }
+  }
+];
+
+export default function App() {
+  const [step, setStep] = useState('intro');
+  const [timeLeft, setTimeLeft] = useState(55 * 60);
+  const [answers, setAnswers] = useState({});
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [imgKey, setImgKey] = useState(Date.now());
+  const [imgError, setImgError] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (step === 'test') {
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current);
+            setStep('result');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [step]);
+
+  const handleStart = () => setStep('test');
+
+  const handleAnswerChange = (id, value) => {
+    setAnswers({ ...answers, [id]: value });
+  };
+
+  const handleSubmit = () => {
+    if (step === 'test') setShowConfirmModal(true);
+    else setStep('result');
+  };
+
+  const confirmSubmit = () => {
+    setShowConfirmModal(false);
+    clearInterval(timerRef.current);
+    setStep('result');
+  };
+
+  const cancelSubmit = () => setShowConfirmModal(false);
+
+  const reloadImage = () => {
+    setImgKey(Date.now());
+    setImgError(false);
+  };
+
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const IntroScreen = () => (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 text-slate-100 p-6">
+      <div className="max-w-2xl w-full bg-slate-900 rounded-xl shadow-2xl overflow-hidden border border-slate-800">
+        <div className="p-8 text-center border-b border-slate-800 bg-slate-900/50">
+          <h1 className="text-3xl font-black mb-4 text-sky-400 tracking-tight">PEARL ABYSS</h1>
+          <h2 className="text-xl font-bold text-slate-300">실무 역량 평가 테스트</h2>
+          <p className="text-slate-500 mt-2 text-sm">Game Design Position Assessment</p>
+        </div>
+        <div className="p-8 space-y-6">
+          <div className="flex items-start space-x-4 bg-red-500/10 p-4 rounded-lg border border-red-500/20">
+            <Video className="w-8 h-8 text-red-500 shrink-0 mt-1" />
+            <div>
+              <h3 className="font-semibold text-red-400 mb-1 font-bold">보안 정책 안내</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                본 평가는 엄격한 보안 하에 진행됩니다. <strong>화면 캡쳐, 녹화 및 외부 유출</strong> 시 법적 책임을 물을 수 있으며, 모든 과정은 로그로 기록됩니다.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start space-x-4 bg-sky-500/10 p-4 rounded-lg border border-sky-500/20">
+            <Clock className="w-8 h-8 text-sky-500 shrink-0 mt-1" />
+            <div>
+              <h3 className="font-semibold text-sky-400 mb-1 font-bold">진행 방식</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">제한 시간 55분 내에 모든 문항을 작성 후 제출하십시오. 자동 저장 기능이 없으므로 유의하십시오.</p>
+            </div>
+          </div>
+          <button onClick={handleStart} className="w-full py-4 mt-6 bg-sky-600 hover:bg-sky-500 text-white font-black rounded-lg transition-all text-lg shadow-[0_0_20px_rgba(2,132,199,0.3)] active:scale-95">
+            평가 시작 (ENTER)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const TestScreen = () => (
+    <div className="min-h-screen bg-slate-950 text-slate-100 pb-24">
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl p-8 max-w-sm w-full shadow-2xl">
+            <h3 className="text-xl font-black text-white mb-3">최종 제출 확인</h3>
+            <p className="text-slate-400 mb-8 text-sm leading-relaxed">제출 후에는 답안을 수정할 수 없습니다.<br/>정말로 전송하시겠습니까?</p>
+            <div className="flex space-x-3">
+              <button onClick={cancelSubmit} className="flex-1 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-800 transition-colors text-sm font-bold border border-slate-700">취소</button>
+              <button onClick={confirmSubmit} className="flex-1 px-4 py-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-black transition-all text-sm shadow-lg">전송</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 z-50 px-8 py-4 flex justify-between items-center shadow-xl">
+        <div className="flex items-center space-x-4 text-red-500 font-black tracking-widest text-xs uppercase">
+          <div className="flex items-center space-x-1">
+            <span className="w-2 h-2 rounded-full bg-red-600 animate-ping"></span>
+            <span className="w-2 h-2 rounded-full bg-red-600 absolute"></span>
+          </div>
+          <span>SECURED SESSION</span>
+        </div>
+        <div className={`flex items-center space-x-3 text-3xl font-mono font-black ${timeLeft < 300 ? 'text-red-500' : 'text-sky-400'}`}>
+          <Clock className="w-7 h-7" />
+          <span className="tabular-nums tracking-tight">{formatTime(timeLeft)}</span>
+        </div>
+        <button onClick={handleSubmit} className="px-6 py-2 bg-sky-600 hover:bg-sky-500 text-white font-black rounded-md text-sm transition-all shadow-md">최종 제출</button>
+      </div>
+
+      <div className="max-w-4xl mx-auto pt-28 px-6 space-y-12">
+        {testData.map((item) => (
+          <div key={item.id} className="bg-slate-900/50 rounded-2xl p-8 shadow-2xl border border-slate-800 transition-all hover:border-slate-700">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 className="text-2xl font-black mb-2 text-white tracking-tight">{item.question}</h2>
+                <p className="text-slate-400 text-sm font-medium opacity-80">{item.description}</p>
+              </div>
+              <span className="bg-slate-800 text-slate-500 px-3 py-1 rounded-full text-[10px] font-black uppercase">Question {item.id}</span>
+            </div>
+            
+            {item.type === 'image-desc' && (
+              <div className="mb-8 rounded-xl overflow-hidden border border-slate-700 bg-black relative group min-h-[400px] flex flex-col items-center justify-center">
+                {!imgError ? (
+                  <img 
+                    key={imgKey}
+                    src={`${item.imageUrl}?v=${imgKey}`} 
+                    alt="상황 묘사 이미지" 
+                    className="max-w-full h-auto object-contain shadow-inner"
+                    loading="eager"
+                    onLoad={() => setImgError(false)}
+                    onError={() => setImgError(true)}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-12 text-center space-y-4">
+                    <ImageIcon className="w-16 h-16 text-slate-800" />
+                    <div className="space-y-2">
+                      <p className="text-slate-500 font-bold">이미지를 불러올 수 없습니다</p>
+                      <p className="text-xs text-slate-600 uppercase tracking-tighter">File: {item.imageUrl}</p>
+                    </div>
+                    <button 
+                      onClick={reloadImage}
+                      className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-all border border-slate-700"
+                    >
+                      <RefreshCcw className="w-3 h-3" />
+                      <span>강제 새로고침</span>
+                    </button>
+                  </div>
+                )}
+                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                   <div className="bg-black/60 backdrop-blur-sm text-white px-3 py-1.5 rounded-md text-[10px] font-bold border border-white/10">
+                      REFERENCE IMAGE
+                   </div>
+                </div>
+              </div>
+            )}
+
+            {item.example && (
+              <div className="mb-6 p-4 bg-black/40 rounded-xl border border-slate-800/50 font-mono text-xs text-emerald-400/90 leading-relaxed shadow-inner">
+                <div className="text-[10px] text-slate-600 mb-2 uppercase font-black">Structure Example:</div>
+                {item.example}
+              </div>
+            )}
+
+            <div className="relative">
+              <textarea
+                value={answers[item.id] || ''}
+                onChange={(e) => handleAnswerChange(item.id, e.target.value)}
+                placeholder="내용을 입력하세요..."
+                className={`w-full bg-slate-950/50 border border-slate-800 rounded-xl p-6 text-slate-200 placeholder:text-slate-700 focus:outline-none focus:border-sky-500/50 focus:ring-4 focus:ring-sky-500/5 focus:bg-slate-950 transition-all resize-none min-h-[220px] ${item.type === 'code' ? 'font-mono text-sm leading-relaxed' : 'text-base leading-relaxed'}`}
+              />
+              <div className="absolute bottom-4 right-4 text-[10px] font-black text-slate-700 uppercase tracking-widest">
+                Chars: {(answers[item.id] || '').length}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const ResultScreen = () => (
+    <div className="min-h-screen bg-slate-50 text-slate-900 py-16 px-6">
+      <div className="max-w-5xl mx-auto">
+        <div className="bg-white rounded-3xl shadow-2xl p-12 mb-12 text-center border border-slate-200 overflow-hidden relative">
+          <div className="absolute top-0 left-0 w-full h-2 bg-sky-600"></div>
+          <CheckCircle className="w-20 h-20 text-emerald-500 mx-auto mb-6 drop-shadow-sm" />
+          <h1 className="text-4xl font-black mb-3 text-slate-900 tracking-tight">평가가 완료되었습니다</h1>
+          <p className="text-slate-500 text-lg font-medium">제출된 답안은 인사 시스템으로 즉시 전송되었습니다.</p>
+        </div>
+
+        <div className="space-y-12">
+          {testData.map((item) => (
+            <div key={item.id} className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 transition-all hover:shadow-2xl">
+              <div className="bg-slate-50 px-10 py-6 border-b border-slate-200 flex justify-between items-center">
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">{item.question}</h3>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Review {item.id}</span>
+              </div>
+              <div className="p-10 grid grid-cols-1 lg:grid-cols-5 gap-10">
+                <div className="lg:col-span-3 space-y-4">
+                  <h4 className="font-black text-slate-400 text-[10px] uppercase tracking-widest flex items-center">
+                    <span className="w-3 h-3 rounded-full bg-sky-500 mr-2"></span>SUBMITTED ANSWER
+                  </h4>
+                  <div className={`p-8 rounded-2xl border border-slate-100 h-full min-h-[160px] whitespace-pre-wrap shadow-inner ${item.type === 'code' ? 'font-mono text-sm bg-slate-950 text-slate-200' : 'text-slate-700 bg-slate-50/30'}`}>
+                    {answers[item.id] || <span className="text-slate-300 italic font-medium text-sm">NO ANSWER PROVIDED</span>}
+                  </div>
+                </div>
+                <div className="lg:col-span-2 space-y-6">
+                  <div className="bg-sky-50 p-6 rounded-2xl border border-sky-100 shadow-sm">
+                    <h4 className="font-black text-sky-800 text-[10px] mb-3 uppercase tracking-widest">EVALUATION INTENT</h4>
+                    <p className="text-sm text-sky-900/80 leading-relaxed font-medium">{item.feedback.intent}</p>
+                  </div>
+                  <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 shadow-sm">
+                    <h4 className="font-black text-emerald-800 text-[10px] mb-3 uppercase tracking-widest">IDEAL APPROACH</h4>
+                    <p className="text-sm text-emerald-900/80 leading-relaxed font-medium">{item.feedback.ideal}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="font-sans antialiased selection:bg-sky-500/20 selection:text-sky-300">
+      {step === 'intro' && <IntroScreen />}
+      {step === 'test' && <TestScreen />}
+      {step === 'result' && <ResultScreen />}
+    </div>
+  );
+}
