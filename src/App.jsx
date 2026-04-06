@@ -946,6 +946,14 @@ AI 분석 요약:
                 </div>
               </div>
 
+              {/* 저장 버튼 */}
+              <button
+                onClick={saveProfile}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2"
+              >
+                <Download size={18} /> 프로필 및 분석 결과 저장
+              </button>
+
               {/* 우선 공고 지정 (1~3순위) */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2">
@@ -1051,25 +1059,16 @@ AI 분석 요약:
               {/* 강사 피드백 */}
               <InstructorFeedbackForm value={instructorFeedback} onChange={setInstructorFeedback} />
 
-              {/* 분석 + 저장 버튼 */}
-              <div className="flex gap-3">
-                <button
-                  onClick={analyzeApplication}
-                  disabled={loading}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 disabled:opacity-70"
-                >
-                  {loading
-                    ? <><Loader2 size={20} className="animate-spin" /> AI 분석 진행 중 ({currentProvider?.label || 'Gemini'})...</>
-                    : <><Target size={20} /> 프로필 기반 추천 공고 및 통합 AI 분석 시작</>}
-                </button>
-                <button
-                  onClick={saveProfile}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg transition-all flex items-center gap-2"
-                  title="프로필·분석결과·강사피드백을 저장합니다"
-                >
-                  <Download size={20} /> 저장
-                </button>
-              </div>
+              {/* 분석 버튼 */}
+              <button
+                onClick={analyzeApplication}
+                disabled={loading}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 disabled:opacity-70"
+              >
+                {loading
+                  ? <><Loader2 size={20} className="animate-spin" /> AI 분석 진행 중 ({currentProvider?.label || 'Gemini'})...</>
+                  : <><Target size={20} /> 프로필 기반 추천 공고 및 통합 AI 분석 시작</>}
+              </button>
             </div>
           )}
 
@@ -1090,7 +1089,7 @@ AI 분석 요약:
                       <FileText size={20} className="text-blue-500" /> 이력서 피드백
                     </h3>
                     <ul className="space-y-4">
-                      {results.resumeImprovements?.length > 0
+                      {Array.isArray(results.resumeImprovements) && results.resumeImprovements.length > 0
                         ? results.resumeImprovements.map((item, idx) => {
                             const { title, body } = parseFeedbackItem(item);
                             return (
@@ -1189,7 +1188,7 @@ AI 분석 요약:
                 </div>
                 <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
                   <ul className="space-y-5">
-                    {results.portfolioImprovements?.length > 0
+                    {Array.isArray(results.portfolioImprovements) && results.portfolioImprovements.length > 0
                       ? results.portfolioImprovements.map((item, idx) => {
                           const { title, body } = parseFeedbackItem(item);
                           return (
@@ -1297,7 +1296,7 @@ AI 분석 요약:
                         )}
                       </div>
                       <div className="space-y-4">
-                        {results.interviewPreps[activeInterviewTab].questions?.map((item, qIdx) => (
+                        {(Array.isArray(results.interviewPreps?.[activeInterviewTab]?.questions) ? results.interviewPreps[activeInterviewTab].questions : []).map((item, qIdx) => (
                           <div key={qIdx} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
                             <div className="flex gap-4">
                               <div className="bg-indigo-100 w-10 h-10 rounded-full flex items-center justify-center text-indigo-700 font-bold shrink-0 mt-1">Q{qIdx + 1}</div>
