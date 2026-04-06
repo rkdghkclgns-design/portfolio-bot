@@ -579,11 +579,22 @@ export default function App() {
         hasPortfolioFile: portfolioFiles.length > 0,
         fileParts: fileParts.length > 0 ? fileParts : undefined,
       });
-      setResults(data);
+      // 결과 데이터 안전 정규화
+      const safeData = {
+        ...data,
+        resumeImprovements: Array.isArray(data.resumeImprovements) ? data.resumeImprovements : [],
+        portfolioImprovements: Array.isArray(data.portfolioImprovements) ? data.portfolioImprovements : [],
+        interviewPreps: Array.isArray(data.interviewPreps) ? data.interviewPreps.map(p => ({
+          ...p,
+          questions: Array.isArray(p.questions) ? p.questions : [],
+        })) : [],
+        coverLetterImprovements: data.coverLetterImprovements || {},
+        profileAnalysis: data.profileAnalysis || {},
+      };
+      setResults(safeData);
       setActiveTab('feedback');
       setActiveInterviewTab(0);
-      // AI 강사피드백 초고 자동 생성
-      generateInstructorDraft(data, userInfo);
+      generateInstructorDraft(safeData, userInfo);
     } catch (err) {
       console.warn('AI 분석 오류 → 로컬 Fallback:', err.message);
       const jobsWithScores = computeJobsWithScores();
@@ -672,15 +683,17 @@ AI 분석 요약:
   };
 
   // ── 저장 기능 ───────────────────────────────────────────────────────
+  const [saveStatus, setSaveStatus] = useState('');
   const saveProfile = () => {
-    const saveData = { userInfo, results, instructorFeedback, savedAt: new Date().toISOString() };
-    localStorage.setItem('portfolio_bot_save', JSON.stringify(saveData));
-    showToast('프로필과 분석 결과가 저장되었습니다.', 'success');
-  };
-  const showToast = (msg, type) => {
-    setInfoMessage(type === 'success' ? msg : '');
-    if (type === 'error') setError(msg);
-    setTimeout(() => { setInfoMessage(''); setError(''); }, 3000);
+    try {
+      const saveData = { userInfo, results, instructorFeedback, savedAt: new Date().toISOString() };
+      localStorage.setItem('portfolio_bot_save', JSON.stringify(saveData));
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (err) {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus(''), 3000);
+    }
   };
   // 저장 데이터 복원
   useEffect(() => {
@@ -949,9 +962,13 @@ AI 분석 요약:
               {/* 저장 버튼 */}
               <button
                 onClick={saveProfile}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2"
+                className={`w-full font-bold py-3 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 ${
+                  saveStatus === 'saved' ? 'bg-emerald-500 text-white' : saveStatus === 'error' ? 'bg-red-500 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
               >
-                <Download size={18} /> 프로필 및 분석 결과 저장
+                {saveStatus === 'saved' ? <><CheckCircle size={18} /> 저장 완료!</>
+                  : saveStatus === 'error' ? <><AlertCircle size={18} /> 저장 실패</>
+                  : <><Download size={18} /> 프로필 및 분석 결과 저장</>}
               </button>
 
               {/* 우선 공고 지정 (1~3순위) */}

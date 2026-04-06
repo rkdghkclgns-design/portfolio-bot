@@ -8,9 +8,13 @@ export const SKILL_CATEGORIES = {
     'Unity', 'Unreal Engine', 'Photoshop', 'Illustrator',
     '3ds Max', 'Maya', 'ZBrush', 'Spine', 'Excel', 'PowerPoint', 'Figma',
   ],
+  'AI 활용 능력': [
+    'ChatGPT/Claude 활용', 'AI 이미지 생성', 'AI 코드 어시스턴트', 'AI 데이터 분석',
+    'Stable Diffusion', 'ComfyUI', 'Midjourney', 'AI 프롬프트 엔지니어링', 'Machine Learning',
+  ],
   '그 외': [
     '프로젝트 매니징(PM)', '데이터 분석', 'JIRA/Confluence',
-    'Git/SVN', '영어(비즈니스)', '일본어', '중국어', 'QA/테스트', 'Machine Learning',
+    'Git/SVN', '영어(비즈니스)', '일본어', '중국어', 'QA/테스트',
   ],
 };
 
