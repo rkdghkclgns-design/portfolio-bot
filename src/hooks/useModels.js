@@ -13,9 +13,8 @@ export function useModels() {
     let cancelled = false;
     (async () => {
       try {
-        let res = await fetch('/api/models').catch(() => null);
-        if (!res || !res.ok) res = await fetch('./api/models.json').catch(() => null);
-        if (!res || !res.ok) throw new Error('모델 목록을 불러올 수 없습니다.');
+        const res = await fetch('./api/models.json');
+        if (!res.ok) throw new Error('모델 목록을 불러올 수 없습니다.');
         const data = await res.json();
         if (!cancelled) setProviders(data);
       } catch (err) {
