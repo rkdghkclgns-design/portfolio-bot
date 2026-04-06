@@ -677,31 +677,30 @@ AI 분석 요약:
         const { parseInstructorMd } = await import('./components/InstructorFeedbackForm');
         const parsed = parseInstructorMd(`# 강사명\nAI 초고\n\n# 피드백 일자\n${today}\n\n${text}`);
         setInstructorFeedback(parsed);
+        return parsed;
       }
     } catch (err) {
       console.warn('강사피드백 AI 초고 생성 실패:', err.message);
     }
+    return null;
   };
 
   // ── 저장 기능 ───────────────────────────────────────────────────────
   const [saveStatus, setSaveStatus] = useState('');
   const saveProfile = async () => {
     try {
-      // 강사피드백이 비어있고 결과가 있으면 AI 초고 생성
-      const isEmpty = !instructorFeedback.general && !instructorFeedback.resume;
+      let feedback = instructorFeedback;
+      const isEmpty = !feedback.general && !feedback.resume;
       if (isEmpty && results) {
         setSaveStatus('generating');
-        await generateInstructorDraft(results, userInfo);
+        const draft = await generateInstructorDraft(results, userInfo);
+        if (draft) feedback = draft;
       }
-      // 최신 state를 반영하기 위해 약간 지연
-      setTimeout(() => {
-        const saveData = { userInfo, results, instructorFeedback, savedAt: new Date().toISOString() };
-        localStorage.setItem('portfolio_bot_save', JSON.stringify(saveData));
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus(''), 3000);
-      }, isEmpty && results ? 500 : 0);
-    } catch (err) {
-      // 초고 생성 실패해도 저장은 진행
+      const saveData = { userInfo, results, instructorFeedback: feedback, savedAt: new Date().toISOString() };
+      localStorage.setItem('portfolio_bot_save', JSON.stringify(saveData));
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch {
       const saveData = { userInfo, results, instructorFeedback, savedAt: new Date().toISOString() };
       localStorage.setItem('portfolio_bot_save', JSON.stringify(saveData));
       setSaveStatus('saved');
@@ -714,7 +713,7 @@ AI 분석 요약:
       const saved = localStorage.getItem('portfolio_bot_save');
       if (saved) {
         const { userInfo: si, results: sr, instructorFeedback: sf } = JSON.parse(saved);
-        if (si) setUserInfo(si);
+        if (si) setUserInfo({ ...si, skills: Array.isArray(si.skills) ? si.skills : [] });
         if (sr) setResults(sr);
         if (sf) setInstructorFeedback(sf);
       }
@@ -1261,7 +1260,7 @@ AI 분석 요약:
                         <h4 className="font-bold text-slate-800 text-xl mb-1">{job.title}</h4>
                         <p className="text-sm text-slate-500 mb-3">{job.role} · 경력 {job.reqExp === 0 ? '신입' : `${job.reqExp}년 이상`}</p>
                         <div className="flex flex-wrap gap-2">
-                          {job.reqSkills.map((skill) => (
+                          {(Array.isArray(job.reqSkills) ? job.reqSkills : []).map((skill) => (
                             <span key={skill} className="text-xs font-medium bg-slate-50 border border-slate-200 px-2 py-1 rounded-md text-slate-600"># {skill}</span>
                           ))}
                         </div>

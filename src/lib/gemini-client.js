@@ -47,9 +47,10 @@ export async function analyzeViaProxy({ modelId, top3, profile, hasFiles, hasPor
   const { buildUserPromptClient } = await import('./prompt-builder.js');
   const userPrompt = buildUserPromptClient({ top3, profile, hasFiles: !!hasFiles, hasPortfolioFile: !!hasPortfolioFile });
 
+  const base = import.meta.env.BASE_URL || '/';
   const [sysPromptText, schemaJson] = await Promise.all([
-    fetch('./prompts/system-prompt.md').then((r) => r.ok ? r.text() : '').catch(() => ''),
-    fetch('./prompts/analysis-schema.json').then((r) => r.ok ? r.json() : null).catch(() => null),
+    fetch(`${base}prompts/system-prompt.md`).then((r) => r.ok ? r.text() : '').catch(() => ''),
+    fetch(`${base}prompts/analysis-schema.json`).then((r) => r.ok ? r.json() : null).catch(() => null),
   ]);
 
   const parts = [{ text: userPrompt }];
