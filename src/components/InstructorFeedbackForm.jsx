@@ -219,7 +219,7 @@ function MarkdownPreview({ content }) {
 // 메인 컴포넌트
 // ══════════════════════════════════════════════════════════════════════
 export default function InstructorFeedbackForm({ value, onChange }) {
-  const [previewKeys, setPreviewKeys] = useState({});
+  const [previewKeys, setPreviewKeys] = useState({ general: true, resume: true, coverLetter: true, portfolio: true, interview: true });
   const [uploadedFileName, setUploadedFileName] = useState('');
 
   const togglePreview = (key) =>

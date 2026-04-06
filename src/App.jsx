@@ -543,6 +543,8 @@ export default function App() {
     setInfoMessage(message);
     setActiveTab('feedback');
     setActiveInterviewTab(0);
+    // 자동 저장
+    try { localStorage.setItem('portfolio_bot_save', JSON.stringify({ userInfo, results: { resumeImprovements: ['로컬 분석'], coverLetterImprovements: {}, portfolioImprovements: ['로컬 분석'], interviewPreps: localQs }, instructorFeedback, savedAt: new Date().toISOString() })); } catch {}
   };
 
   // ── 메인 분석 함수 ────────────────────────────────────────────────────
@@ -597,7 +599,10 @@ export default function App() {
       setResults(safeData);
       setActiveTab('feedback');
       setActiveInterviewTab(0);
-      generateInstructorDraft(safeData, userInfo);
+      // AI 강사피드백 생성 + 자동 저장
+      const draft = await generateInstructorDraft(safeData, userInfo);
+      const saveData = { userInfo, results: safeData, instructorFeedback: draft || instructorFeedback, savedAt: new Date().toISOString() };
+      localStorage.setItem('portfolio_bot_save', JSON.stringify(saveData));
     } catch (err) {
       console.warn('AI 분석 오류 → 로컬 Fallback:', err.message);
       try {
@@ -978,21 +983,6 @@ AI 분석 요약:
                 </div>
               </div>
 
-              {/* 저장 버튼 */}
-              <button
-                onClick={saveProfile}
-                disabled={saveStatus === 'generating'}
-                className={`w-full font-bold py-3 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 disabled:opacity-70 ${
-                  saveStatus === 'saved' ? 'bg-emerald-500 text-white'
-                    : saveStatus === 'generating' ? 'bg-amber-500 text-white'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                }`}
-              >
-                {saveStatus === 'saved' ? <><CheckCircle size={18} /> 저장 완료!</>
-                  : saveStatus === 'generating' ? <><Loader2 size={18} className="animate-spin" /> AI 강사피드백 생성 중...</>
-                  : <><Download size={18} /> 프로필 및 분석 결과 저장</>}
-              </button>
-
               {/* 우선 공고 지정 (1~3순위) */}
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="text-lg font-bold text-slate-800 mb-1 flex items-center gap-2">
@@ -1106,7 +1096,7 @@ AI 분석 요약:
               >
                 {loading
                   ? <><Loader2 size={20} className="animate-spin" /> AI 분석 진행 중 ({currentProvider?.label || 'Gemini'})...</>
-                  : <><Target size={20} /> 프로필 기반 추천 공고 및 통합 AI 분석 시작</>}
+                  : <><Target size={20} /> AI 분석 시작 및 저장</>}
               </button>
             </div>
           )}
@@ -1173,19 +1163,19 @@ AI 분석 요약:
                   </div>
                 </div>
 
-                {/* ② 공고별 맞춤 분석 — 중복 회사 제거, 미지정 시 안내 */}
+                {/* ② 공고별 맞춤 분석 — 우선 공고 지정 시에만 표시 */}
                 {results.coverLetterImprovements && !Array.isArray(results.coverLetterImprovements) && (
                   <div className="space-y-4">
                     <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
                       <Target size={18} className="text-indigo-500" /> 공고별 맞춤 분석
                     </h3>
-                    {recommendedJobs.length === 0 ? (
+                    {!pinnedSlots.some(s => s.status === 'resolved' && s.job) ? (
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
-                        <p className="text-amber-700 text-sm font-bold mb-2">추천 공고가 없습니다</p>
-                        <p className="text-amber-600 text-xs">정보 입력 탭에서 &quot;우선 공고 지정&quot;에 GameJob 공고 번호를 입력하면 맞춤 분석이 제공됩니다.</p>
+                        <p className="text-amber-700 text-sm font-bold mb-2">우선 공고를 지정하면 맞춤 분석이 제공됩니다</p>
+                        <p className="text-amber-600 text-xs">정보 입력 탭 하단의 &quot;우선 공고 지정&quot;에서 GameJob 공고 번호를 입력해주세요.</p>
                       </div>
                     ) : null}
-                    {(() => {
+                    {pinnedSlots.some(s => s.status === 'resolved' && s.job) && (() => {
                       const seen = new Set();
                       return [
                         { key: 'rank1', rankLabel: '1순위', border: 'border-sky-200', bg: 'bg-sky-50', badge: 'bg-sky-100 text-sky-700', icon: 'text-sky-500' },
@@ -1306,9 +1296,23 @@ AI 분석 요약:
                               회사 정보 보기 <Building2 size={12} />
                             </button>
                           ) : (
-                            <a href={`https://www.google.com/search?q=${encodeURIComponent(job.company + ' 게임회사')}`} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-1.5 bg-slate-50 text-slate-400 text-xs font-bold py-2.5 rounded-lg border border-slate-100">
-                              {job.company} 검색 <ExternalLink size={12} />
-                            </a>
+                            <button onClick={() => {
+                              // 크롤링 데이터에서 해당 회사 공고 취합
+                              const companyJobs = jobs.filter(j => j.company === job.company);
+                              const roles = [...new Set(companyJobs.map(j => j.role).filter(Boolean))].join(', ');
+                              const skills = [...new Set(companyJobs.flatMap(j => Array.isArray(j.reqSkills) ? j.reqSkills : []))].slice(0, 10).join(', ');
+                              setSelectedCompanyModal({
+                                name: job.company,
+                                games: job.mainGame || '-',
+                                employees: '-',
+                                revenue: '-',
+                                benefits: '-',
+                                news: [`채용 공고 ${companyJobs.length}건 등록됨`, `주요 직군: ${roles || '-'}`],
+                                aiAnalysis: `이 회사는 현재 ${companyJobs.length}건의 채용 공고를 게시하고 있습니다.\n\n주요 요구 기술: ${skills || '정보 없음'}`,
+                              });
+                            }} className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-lg transition-colors border border-slate-200">
+                              회사 정보 보기 <Building2 size={12} />
+                            </button>
                           )}
                         </div>
                       </div>
