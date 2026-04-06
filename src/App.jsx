@@ -563,15 +563,24 @@ export default function App() {
       setVisibleJobs(10);
       const top3 = jobsWithScores.slice(0, 3);
 
-      // 파일 변환 (Supabase Edge Function 4MB 제한 → 이력서+자소서만, 포트폴리오 제외)
+      // 파일 변환 (Supabase Edge Function 제한 대응 — 총 5MB 이내)
       let fileParts = [];
       if (currentProvider?.supportsFiles) {
         try {
-          if (resumeFile && resumeFile.size < 2 * 1024 * 1024)
-            fileParts.push({ text: '이력서 첨부:' }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(resumeFile) } });
-          if (coverLetterFile && coverLetterFile.size < 2 * 1024 * 1024)
-            fileParts.push({ text: '자기소개서 첨부:' }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(coverLetterFile) } });
-          // 포트폴리오는 크기 제한으로 API에 포함하지 않음 (프로필 기반 분석)
+          let totalSize = 0;
+          const MAX_TOTAL = 5 * 1024 * 1024;
+          const MAX_FILE = 2 * 1024 * 1024;
+          const addFile = async (label, file) => {
+            if (!file || file.size > MAX_FILE || totalSize + file.size > MAX_TOTAL) return;
+            totalSize += file.size;
+            fileParts.push({ text: label }, { inlineData: { mimeType: 'application/pdf', data: await fileToBase64(file) } });
+          };
+          await addFile('이력서 첨부:', resumeFile);
+          await addFile('자기소개서 첨부:', coverLetterFile);
+          for (let i = 0; i < Math.min(portfolioFiles.length, 3); i++) {
+            await addFile(`포트폴리오 ${i + 1}:`, portfolioFiles[i]);
+          }
+          if (portfolioFiles.length > 3) fileParts.push({ text: `(포트폴리오 ${portfolioFiles.length - 3}건은 용량 제한으로 생략됨)` });
         } catch { fileParts = []; }
       }
 
