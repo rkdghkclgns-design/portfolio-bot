@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText, Briefcase, Image as ImageIcon, Target, MessageSquare,
   ChevronRight, AlertCircle, CheckCircle, XCircle, Loader2, Gamepad2,
@@ -690,6 +690,65 @@ AI 분석 요약:
     return null;
   };
 
+  // ── AI 기업 정보 조회 ─────────────────────────────────────────────
+  const companyInfoCache = useRef({});
+  const fetchCompanyInfoAI = async (job) => {
+    const name = job.company;
+    // 캐시 확인
+    if (companyInfoCache.current[name]) {
+      setSelectedCompanyModal(companyInfoCache.current[name]);
+      return;
+    }
+    // 크롤링 데이터 기반 기본 정보
+    const companyJobs = jobs.filter(j => j.company === name);
+    const roles = [...new Set(companyJobs.map(j => j.role).filter(Boolean))].join(', ');
+    const skills = [...new Set(companyJobs.flatMap(j => Array.isArray(j.reqSkills) ? j.reqSkills : []))].slice(0, 10).join(', ');
+    const gameCategories = [...new Set(companyJobs.map(j => j.gameCategory).filter(Boolean))].join(', ');
+
+    // 즉시 기본 정보 표시 (로딩 중)
+    const baseInfo = {
+      name,
+      games: job.mainGame || gameCategories || '-',
+      employees: 'AI 조회 중...',
+      revenue: 'AI 조회 중...',
+      benefits: 'AI 조회 중...',
+      news: [`채용 공고 ${companyJobs.length}건`, `주요 직군: ${roles || '-'}`],
+      aiAnalysis: `주요 요구 기술: ${skills || '-'}\n\nAI가 기업 정보를 조회하고 있습니다...`,
+    };
+    setSelectedCompanyModal(baseInfo);
+
+    // Gemini로 기업 상세 정보 요청
+    try {
+      const { callGeminiProxy } = await import('./lib/gemini-client');
+      const prompt = `한국 게임 회사 "${name}"에 대해 아래 JSON 형식으로 간결하게 답변하세요. 정확한 정보만 작성하고, 모르면 "-"로 표기하세요.
+{"games":"대표 게임 타이틀 (쉼표 구분, 최대 5개)","employees":"직원 수 (예: 약 500명)","revenue":"최근 연 매출 또는 자본 규모","benefits":"주요 복리후생 (2~3개)","news":["최근 뉴스 1","최근 뉴스 2"],"aiAnalysis":"2~3문장 기업 분석 요약"}`;
+
+      const data = await callGeminiProxy({
+        model: 'gemini-2.5-flash',
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.3 },
+      });
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        const ai = JSON.parse(text);
+        const enriched = {
+          name,
+          games: ai.games || baseInfo.games,
+          employees: ai.employees || '-',
+          revenue: ai.revenue || '-',
+          benefits: ai.benefits || '-',
+          news: [...(Array.isArray(ai.news) ? ai.news : []), `채용 공고 ${companyJobs.length}건 등록`],
+          aiAnalysis: (ai.aiAnalysis || '') + `\n\n주요 요구 기술: ${skills || '-'}`,
+        };
+        companyInfoCache.current[name] = enriched;
+        setSelectedCompanyModal(enriched);
+      }
+    } catch (err) {
+      console.warn('AI 기업 정보 조회 실패:', err.message);
+      companyInfoCache.current[name] = baseInfo;
+    }
+  };
+
   // ── 저장 기능 ───────────────────────────────────────────────────────
   const [saveStatus, setSaveStatus] = useState('');
   const saveProfile = async () => {
@@ -1296,13 +1355,13 @@ AI 분석 요약:
                           <div className="mt-3 bg-slate-50 rounded-lg border border-slate-100 p-3">
                             <div className="grid grid-cols-5 gap-1 text-center mb-2">
                               {[
-                                { label: '직군', score: job.matchDetail.roleScore, max: 15, color: 'bg-blue-500' },
-                                { label: '경력', score: job.matchDetail.expScore, max: 15, color: 'bg-green-500' },
-                                { label: '스킬', score: job.matchDetail.skillScore, max: 30, color: 'bg-purple-500' },
-                                { label: '정합도', score: job.matchDetail.fitScore, max: 25, color: 'bg-orange-500' },
-                                { label: '복수매칭', score: job.matchDetail.multiScore, max: 15, color: 'bg-pink-500' },
+                                { label: '직군', score: job.matchDetail.roleScore, max: 15, color: 'bg-blue-500', tip: '희망 직무와 공고 직군이 일치하면 15점' },
+                                { label: '경력', score: job.matchDetail.expScore, max: 15, color: 'bg-green-500', tip: '요구 경력과 보유 경력 차이: 동일=15, 1년차이=10, 2년차이=5' },
+                                { label: '스킬', score: job.matchDetail.skillScore, max: 30, color: 'bg-purple-500', tip: '매칭된 스킬의 숙련도 가중합 (上×1.5, 中×1.0, 下×0.4)' },
+                                { label: '정합도', score: job.matchDetail.fitScore, max: 25, color: 'bg-orange-500', tip: '스킬 커버리지 × 평균 숙련도 — 많이 & 높게 매칭될수록 높음' },
+                                { label: '복수매칭', score: job.matchDetail.multiScore, max: 15, color: 'bg-pink-500', tip: '2개 매칭=+5, 3개=+10, 4개 이상=+15' },
                               ].map(item => (
-                                <div key={item.label}>
+                                <div key={item.label} title={item.tip} className="cursor-help">
                                   <div className="text-[10px] text-slate-500 mb-1">{item.label}</div>
                                   <div className="w-full bg-slate-200 rounded-full h-1.5">
                                     <div className={`h-full rounded-full ${item.color}`} style={{ width: `${item.max > 0 ? (item.score / item.max) * 100 : 0}%` }} />
@@ -1344,21 +1403,7 @@ AI 분석 요약:
                               회사 정보 보기 <Building2 size={12} />
                             </button>
                           ) : (
-                            <button onClick={() => {
-                              // 크롤링 데이터에서 해당 회사 공고 취합
-                              const companyJobs = jobs.filter(j => j.company === job.company);
-                              const roles = [...new Set(companyJobs.map(j => j.role).filter(Boolean))].join(', ');
-                              const skills = [...new Set(companyJobs.flatMap(j => Array.isArray(j.reqSkills) ? j.reqSkills : []))].slice(0, 10).join(', ');
-                              setSelectedCompanyModal({
-                                name: job.company,
-                                games: job.mainGame || '-',
-                                employees: '-',
-                                revenue: '-',
-                                benefits: '-',
-                                news: [`채용 공고 ${companyJobs.length}건 등록됨`, `주요 직군: ${roles || '-'}`],
-                                aiAnalysis: `이 회사는 현재 ${companyJobs.length}건의 채용 공고를 게시하고 있습니다.\n\n주요 요구 기술: ${skills || '정보 없음'}`,
-                              });
-                            }} className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-lg transition-colors border border-slate-200">
+                            <button onClick={() => fetchCompanyInfoAI(job)} className="w-full flex items-center justify-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-lg transition-colors border border-slate-200">
                               회사 정보 보기 <Building2 size={12} />
                             </button>
                           )}
