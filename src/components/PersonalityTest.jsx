@@ -20,7 +20,8 @@ function formatTime(seconds) {
 
 // ── 상수 ─────────────────────────────────────────────────────────────────
 const TOTAL_TIME = 40 * 60;
-const QUESTIONS_PER_PAGE = 5;
+const QUESTIONS_PER_PAGE = 1;
+const QUESTION_TIME_LIMIT = 10; // 문항당 10초
 
 // ── 로컬 Fallback 분석 로직 ─────────────────────────────────────────────
 function analyzeLocally(likertAnswers, binaryAnswers) {
@@ -312,7 +313,9 @@ export default function PersonalityTest({ selectedProvider, selectedModelId }) {
   const [currentPage, setCurrentPage] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showTimeWarning, setShowTimeWarning] = useState(false);
+  const [questionTimeLeft, setQuestionTimeLeft] = useState(QUESTION_TIME_LIMIT);
   const timerRef = useRef(null);
+  const questionTimerRef = useRef(null);
   const scrollRef = useRef(null);
 
   // AI 분석 관련
@@ -345,6 +348,41 @@ export default function PersonalityTest({ selectedProvider, selectedModelId }) {
       return () => clearTimeout(t);
     }
   }, [showTimeWarning]);
+
+  // 문항별 10초 타이머
+  useEffect(() => {
+    if (step === 'test-likert' || step === 'test-binary') {
+      setQuestionTimeLeft(QUESTION_TIME_LIMIT);
+      clearInterval(questionTimerRef.current);
+      questionTimerRef.current = setInterval(() => {
+        setQuestionTimeLeft((prev) => {
+          if (prev <= 1) {
+            clearInterval(questionTimerRef.current);
+            // 시간 초과 → 자동으로 다음 문항
+            autoAdvance();
+            return QUESTION_TIME_LIMIT;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(questionTimerRef.current);
+  }, [currentPage, step]);
+
+  const autoAdvance = useCallback(() => {
+    const questions = step === 'test-likert' ? MAIN_QUESTIONS : step === 'test-binary' ? BINARY_QUESTIONS : [];
+    const totalPages = Math.ceil(questions.length / QUESTIONS_PER_PAGE);
+    if (currentPage < totalPages - 1) {
+      setCurrentPage((p) => p + 1);
+    } else if (step === 'test-likert') {
+      setCurrentPage(0);
+      setStep('test-binary');
+    } else {
+      clearInterval(timerRef.current);
+      clearInterval(questionTimerRef.current);
+      setStep('result');
+    }
+  }, [currentPage, step]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -591,8 +629,13 @@ export default function PersonalityTest({ selectedProvider, selectedModelId }) {
               남은 문항 {isLikert ? MAIN_QUESTIONS.length - Object.keys(likertAnswers).length : BINARY_QUESTIONS.length - Object.keys(binaryAnswers).length}
             </span>
           </div>
-          <div className={`flex items-center gap-2 text-xl font-mono font-bold ${timeLeft < 300 ? 'text-red-500 animate-pulse' : 'text-slate-700'}`}>
-            <Clock className="w-4 h-4" /><span className="tabular-nums">{formatTime(timeLeft)}</span>
+          <div className="flex items-center gap-4">
+            <div className={`flex items-center gap-1 text-sm font-mono font-bold ${questionTimeLeft <= 3 ? 'text-red-500 animate-pulse' : 'text-violet-600'}`}>
+              <span className="text-xs text-slate-400">문항</span> <span className="tabular-nums text-lg">{questionTimeLeft}s</span>
+            </div>
+            <div className={`flex items-center gap-2 text-lg font-mono font-bold ${timeLeft < 300 ? 'text-red-500 animate-pulse' : 'text-slate-700'}`}>
+              <Clock className="w-4 h-4" /><span className="tabular-nums">{formatTime(timeLeft)}</span>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-slate-500 tabular-nums">{answeredCount}/{totalQuestions}</span>
@@ -620,7 +663,12 @@ export default function PersonalityTest({ selectedProvider, selectedModelId }) {
               <QuestionCard key={isLikert ? `l-${q.id}` : `b-${q.id}`} number={globalOffset + idx + 1}
                 text={q.text} questionData={q}
                 selected={isLikert ? likertAnswers[q.id] : binaryAnswers[q.id]}
-                onSelect={(val) => { isLikert ? setLikertAnswers(p => ({ ...p, [q.id]: val })) : setBinaryAnswers(p => ({ ...p, [q.id]: val })); }}
+                onSelect={(val) => {
+                  if (isLikert) setLikertAnswers(p => ({ ...p, [q.id]: val }));
+                  else setBinaryAnswers(p => ({ ...p, [q.id]: val }));
+                  // 선택 시 0.3초 후 자동 다음 문항
+                  setTimeout(() => autoAdvance(), 300);
+                }}
                 type={isLikert ? 'likert' : 'binary'} totalNumber={q.id} />
             ))}
           </div>

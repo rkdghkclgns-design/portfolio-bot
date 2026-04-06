@@ -582,6 +582,8 @@ export default function App() {
       setResults(data);
       setActiveTab('feedback');
       setActiveInterviewTab(0);
+      // AI 강사피드백 초고 자동 생성
+      generateInstructorDraft(data, userInfo);
     } catch (err) {
       console.warn('AI 분석 오류 → 로컬 Fallback:', err.message);
       const jobsWithScores = computeJobsWithScores();
@@ -593,6 +595,105 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  // ── AI 강사피드백 초고 생성 ─────────────────────────────────────────
+  const generateInstructorDraft = async (aiResults, profile) => {
+    try {
+      const { callGeminiProxy } = await import('./lib/gemini-client');
+      const today = new Date().toISOString().slice(0, 10);
+      const prompt = `당신은 게임 업계 취업 컨설팅 강사입니다. 아래 AI 분석 결과를 바탕으로 강사 피드백 초고를 작성하세요.
+
+지원자: ${profile.name} | 직군: ${profile.role} | 경력: ${profile.experience}년
+스킬: ${profile.skills.map(s => `${s.name}(${s.level})`).join(', ')}
+
+AI 분석 요약:
+- 프로필: ${JSON.stringify(aiResults.profileAnalysis || {}).slice(0, 500)}
+- 이력서: ${JSON.stringify(aiResults.resumeImprovements || []).slice(0, 500)}
+- 포트폴리오: ${JSON.stringify(aiResults.portfolioImprovements || []).slice(0, 500)}
+
+아래 마크다운 형식으로 정확히 작성하세요:
+
+# 통합 피드백
+
+## 전체 평가
+(2~3문장 종합 평가)
+
+## 주요 개선사항
+- (핵심 개선 항목 3~5개)
+
+# 이력서 피드백
+
+## 강점
+- (2~3개)
+
+## 개선 포인트
+- (2~3개)
+
+# 자기소개서 피드백
+
+## 강점
+- (2~3개)
+
+## 개선 포인트
+- (2~3개)
+
+# 포트폴리오 피드백
+
+## 강점
+- (2~3개)
+
+## 개선 포인트
+- (2~3개)
+
+# 면접 대비
+
+## 예상 질문
+- (3~4개)
+
+## 준비 방향
+- (2~3개)
+
+게임 업계 실무 관점에서 구체적으로 작성하세요.`;
+
+      const data = await callGeminiProxy({
+        model: 'gemini-2.5-flash',
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7 },
+      });
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        const { parseInstructorMd } = await import('./components/InstructorFeedbackForm');
+        const parsed = parseInstructorMd(`# 강사명\nAI 초고\n\n# 피드백 일자\n${today}\n\n${text}`);
+        setInstructorFeedback(parsed);
+      }
+    } catch (err) {
+      console.warn('강사피드백 AI 초고 생성 실패:', err.message);
+    }
+  };
+
+  // ── 저장 기능 ───────────────────────────────────────────────────────
+  const saveProfile = () => {
+    const saveData = { userInfo, results, instructorFeedback, savedAt: new Date().toISOString() };
+    localStorage.setItem('portfolio_bot_save', JSON.stringify(saveData));
+    showToast('프로필과 분석 결과가 저장되었습니다.', 'success');
+  };
+  const showToast = (msg, type) => {
+    setInfoMessage(type === 'success' ? msg : '');
+    if (type === 'error') setError(msg);
+    setTimeout(() => { setInfoMessage(''); setError(''); }, 3000);
+  };
+  // 저장 데이터 복원
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('portfolio_bot_save');
+      if (saved) {
+        const { userInfo: si, results: sr, instructorFeedback: sf } = JSON.parse(saved);
+        if (si) setUserInfo(si);
+        if (sr) setResults(sr);
+        if (sf) setInstructorFeedback(sf);
+      }
+    } catch {}
+  }, []);
 
   // ── 네비게이션 ────────────────────────────────────────────────────────
   const navItems = [
@@ -950,16 +1051,25 @@ export default function App() {
               {/* 강사 피드백 */}
               <InstructorFeedbackForm value={instructorFeedback} onChange={setInstructorFeedback} />
 
-              {/* 분석 버튼 */}
-              <button
-                onClick={analyzeApplication}
-                disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 disabled:opacity-70"
-              >
-                {loading
-                  ? <><Loader2 size={20} className="animate-spin" /> AI 분석 진행 중 ({currentProvider?.label || 'Gemini'})...</>
-                  : <><Target size={20} /> 프로필 기반 추천 공고 및 통합 AI 분석 시작</>}
-              </button>
+              {/* 분석 + 저장 버튼 */}
+              <div className="flex gap-3">
+                <button
+                  onClick={analyzeApplication}
+                  disabled={loading}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex justify-center items-center gap-2 disabled:opacity-70"
+                >
+                  {loading
+                    ? <><Loader2 size={20} className="animate-spin" /> AI 분석 진행 중 ({currentProvider?.label || 'Gemini'})...</>
+                    : <><Target size={20} /> 프로필 기반 추천 공고 및 통합 AI 분석 시작</>}
+                </button>
+                <button
+                  onClick={saveProfile}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg transition-all flex items-center gap-2"
+                  title="프로필·분석결과·강사피드백을 저장합니다"
+                >
+                  <Download size={20} /> 저장
+                </button>
+              </div>
             </div>
           )}
 
@@ -1167,14 +1277,14 @@ export default function App() {
                   <p className="text-slate-500">1~3순위 추천 공고별 인재상과 과제 유형을 반영한 두괄식 면접 대비 가이드입니다.</p>
                 </div>
                 <div className="flex bg-slate-200 p-1 rounded-xl w-full">
-                  {results.interviewPreps.map((prep, idx) => (
+                  {(Array.isArray(results.interviewPreps) ? results.interviewPreps : []).map((prep, idx) => (
                     <button key={idx} onClick={() => setActiveInterviewTab(idx)} className={`flex-1 py-2 px-4 text-sm font-bold rounded-lg transition-colors ${activeInterviewTab === idx ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                       {prep.rank}순위: {prep.company.split(' ')[0]}
                     </button>
                   ))}
                 </div>
                 <div className="space-y-4">
-                  {results.interviewPreps[activeInterviewTab] && (
+                  {Array.isArray(results.interviewPreps) && results.interviewPreps[activeInterviewTab] && (
                     <>
                       <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 shadow-sm mb-6">
                         <h3 className="text-lg font-bold text-indigo-900 mb-3 flex items-center gap-2"><Target size={20} className="text-indigo-500" /> 인재상 및 어필 전략</h3>
