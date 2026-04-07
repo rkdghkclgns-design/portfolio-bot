@@ -43,9 +43,9 @@ export async function callGeminiProxy({ contents, systemInstruction, generationC
 /**
  * AI 분석 - Supabase gemini-proxy 경유 (API 키 불필요)
  */
-export async function analyzeViaProxy({ modelId, top3, profile, hasFiles, hasPortfolioFile, fileParts }) {
+export async function analyzeViaProxy({ modelId, top3, profile, hasFiles, hasPortfolioFile, fileParts, portfolioFileNames }) {
   const { buildUserPromptClient } = await import('./prompt-builder.js');
-  const userPrompt = buildUserPromptClient({ top3, profile, hasFiles: !!hasFiles, hasPortfolioFile: !!hasPortfolioFile });
+  const userPrompt = buildUserPromptClient({ top3, profile, hasFiles: !!hasFiles, hasPortfolioFile: !!hasPortfolioFile, portfolioFileNames });
 
   const base = import.meta.env.BASE_URL || '/';
   const [sysPromptText, schemaJson] = await Promise.all([

@@ -30,7 +30,7 @@ const DEFAULT_ROLE_FOCUS = `### 직군 특화 평가 지시 (공통)
 - 지원 직군에서 요구하는 핵심 기술 스택과 보유 스킬의 매칭도를 중점 평가하세요.
 - 실제 프로젝트에서의 기여도와 성과를 수치·사례 중심으로 표현하도록 안내하세요.`;
 
-export function buildUserPromptClient({ top3, profile, hasFiles, hasPortfolioFile }) {
+export function buildUserPromptClient({ top3, profile, hasFiles, hasPortfolioFile, portfolioFileNames }) {
   const top3JD = top3.map((job, idx) => `
 [${idx + 1}순위 추천 공고]
 - 회사명: ${job.companyInfo?.name || job.company}
@@ -49,8 +49,9 @@ export function buildUserPromptClient({ top3, profile, hasFiles, hasPortfolioFil
     ? '### 첨부 파일\n첨부된 파일(이력서·자기소개서·포트폴리오)을 직접 분석하여 피드백에 반영하세요.'
     : '### 첨부 파일\n첨부 파일이 없습니다. 프로필 정보만으로 피드백을 제공하세요.';
 
+  const pfNames = Array.isArray(portfolioFileNames) && portfolioFileNames.length > 0 ? portfolioFileNames : [];
   const portfolioInstruction = hasPortfolioFile
-    ? '첨부된 포트폴리오 파일을 직접 분석하여 구체적인 개선점을 제시하세요.'
+    ? `첨부된 포트폴리오를 직접 분석하여 각 문서별 구체적인 개선점을 제시하세요.\n첨부된 포트폴리오 목록:\n${pfNames.map((n, i) => `  ${i+1}. ${n}`).join('\n') || '  (파일명 정보 없음)'}\n\n**중요: portfolioImprovements 배열의 각 항목 앞에 반드시 해당 포트폴리오 파일명을 "포트폴리오 N (파일명):" 형식으로 명시하세요.**`
     : '포트폴리오 파일이 없으므로 프로필과 직군 기준으로 포트폴리오 구성 방향을 제안하세요.';
 
   const roleFocus = ROLE_FOCUS_MAP[profile.role] || DEFAULT_ROLE_FOCUS;

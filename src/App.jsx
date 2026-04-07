@@ -522,10 +522,12 @@ export default function App() {
           `**문화 핏 어필**: ${top3[2]?.company || '3순위 회사'}의 개발 철학·장르 특성과 본인의 커리어 방향성이 일치함을 구체적으로 서술하세요.`,
         ],
       },
-      portfolioImprovements: [
-        `**과정 및 최적화 문서화**: 결과물 외에 문제 해결 과정(퍼포먼스 향상 등)을 노션/깃허브에 문서화하여 링크하세요.`,
-        `**기여도 명시**: 팀 프로젝트 내 본인의 명확한 역할과 기여도(%)를 앞장에 요약하세요.`,
-      ],
+      portfolioImprovements: portfolioFiles.length > 0
+        ? portfolioFiles.map((f, i) => `**포트폴리오 ${i+1} (${f.name})**: 해당 문서의 핵심 기여도와 문제 해결 과정을 수치화하여 보강하세요.`)
+        : [
+          `**과정 및 최적화 문서화**: 결과물 외에 문제 해결 과정(퍼포먼스 향상 등)을 노션/깃허브에 문서화하여 링크하세요.`,
+          `**기여도 명시**: 팀 프로젝트 내 본인의 명확한 역할과 기여도(%)를 앞장에 요약하세요.`,
+        ],
       interviewPreps: localQs,
     });
     setInfoMessage(message);
@@ -576,6 +578,7 @@ export default function App() {
         hasFiles: fileParts.length > 0,
         hasPortfolioFile: portfolioFiles.length > 0,
         fileParts: fileParts.length > 0 ? fileParts : undefined,
+        portfolioFileNames: portfolioFiles.map(f => f.name),
       });
       // 결과 데이터 안전 정규화
       const safeData = {
@@ -1286,10 +1289,14 @@ AI 분석 요약:
                     {Array.isArray(results.portfolioImprovements) && results.portfolioImprovements.length > 0
                       ? results.portfolioImprovements.map((item, idx) => {
                           const { title, body } = parseFeedbackItem(item);
+                          const pfName = portfolioFiles[idx]?.name;
                           return (
                             <li key={idx} className="flex items-start gap-3 bg-slate-50 p-5 rounded-xl text-sm leading-relaxed">
-                              <div className="bg-white border border-slate-200 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-slate-500 shrink-0 mt-0.5">{idx + 1}</div>
-                              <div>
+                              <div className="bg-indigo-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">{idx + 1}</div>
+                              <div className="flex-1">
+                                {pfName && !title?.includes(pfName) && (
+                                  <p className="text-xs text-indigo-500 font-bold mb-1 flex items-center gap-1"><FileText size={12} /> {pfName}</p>
+                                )}
                                 {title && <p className="font-semibold text-slate-800 mb-0.5">{title}</p>}
                                 {body && <p className="text-slate-600">{body}</p>}
                               </div>
